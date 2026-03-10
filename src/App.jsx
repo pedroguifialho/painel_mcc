@@ -1,6 +1,9 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import nativeData from './data/data.json';
-import ddaData from './data/dda-imported.json'; // The new persistent file
+import { supabase } from './lib/supabase';
+import Login from './components/Login';
+import AuditHistory from './components/AuditHistory';
+// import nativeData from './data/data.json'; // Deprecated for Supabase
+// import ddaData from './data/dda-imported.json'; // Deprecated for Supabase
 import {
     BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
     Cell, CartesianGrid, Legend
@@ -25,7 +28,8 @@ import {
     Moon,
     Download,
     ChevronLeft,
-    ChevronRight
+    ChevronRight,
+    History
 } from 'lucide-react';
 
 // Utility to parse DD/MM/YYYY to YYYY-MM-DD for easier comparison
@@ -44,6 +48,7 @@ const parseCurrency = (valStr) => {
 };
 
 const App = () => {
+    const [user, setUser] = useState(null);
     const [activeTab, setActiveTab] = useState('dashboard');
     const [searchTerm, setSearchTerm] = useState('');
     const [supplierFilter, setSupplierFilter] = useState('');
@@ -81,26 +86,78 @@ const App = () => {
     });
 
     useEffect(() => {
-        localStorage.setItem('ddaIgnoredSuppliers', JSON.stringify(ddaIgnoredSuppliers));
-    }, [ddaIgnoredSuppliers]);
+        // Check current session
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setUser(session?.user ?? null);
+        });
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setUser(session?.user ?? null);
+        });
+
+        return () => subscription.unsubscribe();
+    }, []);
+
+    const handleLogout = async () => {
+        await supabase.auth.signOut();
+        setUser(null);
+    };
 
     const [localDdaData, setLocalDdaData] = useState([]);
+    const [dbData, setDbData] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
 
-    // 1. Combine Native data and DDA Data
+    // 1. Fetch initial data from Supabase
+    const fetchPayments = useCallback(async () => {
+        setIsLoading(true);
+        const { data, error } = await supabase
+            .from('payments')
+            .select('*')
+            .order('vencimento', { ascending: true });
+
+        if (error) {
+            console.error('Error fetching payments:', error);
+        } else {
+            // Map DB fields to match current logic if needed
+            const mapped = (data || []).map(item => ({
+                ...item,
+                valor: parseFloat(item.valor)
+            }));
+            setDbData(mapped);
+        }
+        setIsLoading(false);
+    }, []);
+
+    useEffect(() => {
+        fetchPayments();
+
+        // 2. Setup Realtime Subscription
+        const channel = supabase
+            .channel('public:payments')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => {
+                fetchPayments(); // Refresh on any change
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [fetchPayments]);
+
+    // 3. Combine initial DB data and transient DDA Data
     const baseData = useMemo(() => {
         // Flag source
-        const mappedNative = nativeData.map(d => ({ ...d, source: 'native' }));
-        const mappedDda = ddaData.map(d => ({ ...d, source: 'dda' }));
+        const mappedDb = dbData.map(d => ({ ...d, source: d.source || 'native' }));
         const mappedLocalDda = localDdaData.map(d => ({ ...d, source: 'dda' }));
 
-        const combined = [...mappedNative, ...mappedDda, ...mappedLocalDda];
+        const combined = [...mappedDb, ...mappedLocalDda];
 
         return combined.map(item => ({
             ...item,
             data_iso: parseDateString(item.vencimento),
             valor_fmt: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.valor),
-        })).sort((a, b) => a.data_iso.localeCompare(b.data_iso));
-    }, [localDdaData]); // Note: In a real app we'd fetch ddaData to make it reactive.
+        })).sort((a, b) => (a.data_iso || '').localeCompare(b.data_iso || ''));
+    }, [dbData, localDdaData]);
 
     // 2. Apply global filters (Period, Search, Supplier) (For Dashboard/Reports only)
     const filteredData = useMemo(() => {
@@ -536,13 +593,16 @@ const App = () => {
                 observacao: r.observacao
             }));
 
-            // Simulate save operation
-            // const res = await fetch('/api/save-dda', { method: 'POST', body: JSON.stringify(payload) });
-            await new Promise(r => setTimeout(r, 800));
+            // Actual save operation to Supabase
+            const { error } = await supabase
+                .from('payments')
+                .insert(payload);
 
-            setLocalDdaData(prev => [...prev, ...payload]);
-            alert(`${toInsert.length} lançamentos importados com sucesso!\n\nEles já constam no Dashboard Geral marcados como "Via DDA".`);
+            if (error) throw error;
+
+            alert(`${toInsert.length} lançamentos importados com sucesso!\n\nEles já constam no Dashboard Geral vinculados ao banco de dados.`);
             setDdaPreview(null);
+            // fetchPayments() will be called automatically by Realtime subscription
             setActiveTab('dashboard'); // Redirect to general list to view changes
         } catch (err) {
             console.error(err);
@@ -558,12 +618,21 @@ const App = () => {
         window.__test_saveToBackend = saveToBackend;
     }, [processDDAText, saveToBackend]);
 
+    if (!user) {
+        return <Login onLogin={setUser} />;
+    }
+
     return (
         <div className={`container ${!isDarkMode ? 'light-theme' : ''}`}>
-            <header className="app-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                    <h1>Painel Financeiro - MCC</h1>
-                    <p className="text-muted">Gestão de Contas a Pagar</p>
+             <header className="app-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{ background: 'var(--color-accent-subtle)', padding: '0.5rem', borderRadius: '8px', color: 'var(--color-accent)' }}>
+                        <Users size={32} />
+                    </div>
+                    <div>
+                        <h1>Painel Financeiro - MCC</h1>
+                        <p className="text-muted">Olá, {user.email} | <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: 'var(--color-danger)', cursor: 'pointer', padding: 0, textDecoration: 'underline', fontSize: '0.8rem' }}>Sair</button></p>
+                    </div>
                 </div>
                 <button
                     onClick={() => setIsDarkMode(!isDarkMode)}
@@ -602,6 +671,14 @@ const App = () => {
                 >
                     <FileBarChart size={18} />
                     Relatórios
+                </button>
+                <button
+                    className={`nav-tab ${activeTab === 'audit' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('audit')}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                >
+                    <History size={18} />
+                    Histórico
                 </button>
                 <button
                     className={`nav-tab ${activeTab === 'import' ? 'active' : ''}`}
@@ -908,6 +985,10 @@ const App = () => {
             )}
 
             {/* DDA Import Tab */}
+            {activeTab === 'audit' && (
+                <AuditHistory />
+            )}
+
             {activeTab === 'import' && (
                 <div className="card">
                     <h2 style={{ marginBottom: '1rem' }}>Sincronização DDA</h2>
