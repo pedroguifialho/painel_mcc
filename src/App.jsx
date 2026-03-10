@@ -764,7 +764,7 @@ const App = () => {
                     style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto', color: 'var(--color-accent)' }}
                 >
                     <UploadCloud size={18} />
-                    Importar DDA
+                    Importação
                 </button>
             </nav>
 
