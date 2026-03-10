@@ -106,6 +106,8 @@ const App = () => {
     const [localDdaData, setLocalDdaData] = useState([]);
     const [dbData, setDbData] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [csvFile, setCsvFile] = useState(null);
+    const [isReseting, setIsReseting] = useState(false);
 
     // 1. Fetch initial data from Supabase
     const fetchPayments = useCallback(async () => {
@@ -597,7 +599,6 @@ const App = () => {
             const { error } = await supabase
                 .from('payments')
                 .insert(payload);
-
             if (error) throw error;
 
             alert(`${toInsert.length} lançamentos importados com sucesso!\n\nEles já constam no Dashboard Geral vinculados ao banco de dados.`);
@@ -606,10 +607,87 @@ const App = () => {
             setActiveTab('dashboard'); // Redirect to general list to view changes
         } catch (err) {
             console.error(err);
-            alert('Erro ao salvar.');
+            alert('Erro ao salvar no banco de dados: ' + (err.message || 'Verifique o console.'));
         } finally {
             setIsSavingInProgress(false);
         }
+    };
+
+    // --- NEW: General Spreadsheet Import Logic ---
+    const handleGeneralCsvImport = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            const text = event.target.result;
+            const lines = text.split('\n');
+            
+            // Logic based on CSV format: skip 3 lines, 4th is header, skip last
+            if (lines.length < 5) {
+                alert('Arquivo CSV parece curto demais ou inválido.');
+                return;
+            }
+
+            const headerLine = lines[3]; // Line 4 (index 3)
+            const headers = headerLine.split(';').map(h => h.trim().toLowerCase());
+            
+            // Map column indices
+            const colIdx = {
+                data_movimento: headers.indexOf('data movim.'),
+                documento: headers.indexOf('documento'),
+                descricao: headers.indexOf('histórico'),
+                nome: headers.indexOf('pessoa'),
+                valor: headers.indexOf('valor'),
+                vencimento: headers.indexOf('vencimento'),
+                observacao: headers.indexOf('observação')
+            };
+
+            const dataRows = lines.slice(4, -1); // Skip 4 lines and last line (totals)
+            const newRecords = dataRows
+                .map(line => {
+                    const cells = line.split(';');
+                    if (cells.length < 5) return null;
+                    return {
+                        data_movimento: cells[colIdx.data_movimento] || '',
+                        documento: cells[colIdx.documento] || '',
+                        descricao: cells[colIdx.descricao] || '',
+                        nome: cells[colIdx.nome] || '',
+                        valor: parseCurrency(cells[colIdx.valor]),
+                        vencimento: cells[colIdx.vencimento] || '',
+                        observacao: cells[colIdx.observacao] || '',
+                        source: 'native'
+                    };
+                })
+                .filter(r => r && r.vencimento && r.nome);
+
+            if (window.confirm(`Isso irá APAGAR TODOS os dados atuais (${dbData.length} registros) e importar ${newRecords.length} registros da planilha. Deseja continuar?`)) {
+                setIsReseting(true);
+                try {
+                    // 1. Delete all records
+                    const { error: delError } = await supabase.from('payments').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+                    if (delError) throw delError;
+
+                    // 2. Insert new records in batches
+                    const batchSize = 500;
+                    for (let i = 0; i < newRecords.length; i += batchSize) {
+                        const batch = newRecords.slice(i, i + batchSize);
+                        const { error: insError } = await supabase.from('payments').insert(batch);
+                        if (insError) throw insError;
+                    }
+
+                    alert(`Banco de dados resetado e ${newRecords.length} registros importados com sucesso!`);
+                    fetchPayments();
+                    setActiveTab('dashboard');
+                } catch (err) {
+                    console.error(err);
+                    alert('Erro ao resetar banco: ' + err.message);
+                } finally {
+                    setIsReseting(false);
+                }
+            }
+        };
+        reader.readAsText(file, 'ISO-8859-1'); // Common for BR CSVs
     };
 
     // Safely expose functions to window for testing
@@ -990,7 +1068,44 @@ const App = () => {
             )}
 
             {activeTab === 'import' && (
-                <div className="card">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                    {/* General Spreadsheet Import */}
+                    <div className="card">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                            <div style={{ background: 'var(--color-primary-subtle)', padding: '0.5rem', borderRadius: '8px', color: 'var(--color-primary)' }}>
+                                <UploadCloud size={24} />
+                            </div>
+                            <h2 style={{ fontSize: '1.25rem', margin: 0 }}>Importar Planilha Geral (Reset)</h2>
+                        </div>
+                        
+                        <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+                            Use esta opção para atualizar toda a base de dados a partir de uma exportação do seu sistema. 
+                            <strong style={{ color: 'var(--color-danger)' }}> Atenção: Isso apaga todos os registros atuais!</strong>
+                        </p>
+
+                        <div style={{ background: 'rgba(0,0,0,0.1)', border: '1px dashed var(--color-border)', borderRadius: '12px', padding: '2rem', textAlign: 'center' }}>
+                            <input
+                                type="file"
+                                id="general-csv-upload"
+                                accept=".csv"
+                                onChange={handleGeneralCsvImport}
+                                style={{ display: 'none' }}
+                                disabled={isReseting}
+                            />
+                            <label htmlFor="general-csv-upload" style={{ cursor: isReseting ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+                                <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--color-bg-base)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--color-border)' }}>
+                                    {isReseting ? <Loader2 className="animate-spin" /> : <FileBarChart size={24} />}
+                                </div>
+                                <div>
+                                    <span style={{ fontWeight: 600, display: 'block' }}>{isReseting ? 'Sincronizando Banco de Dados...' : 'Clique para selecionar o CSV Geral'}</span>
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Formatos suportados: .csv (Exportação Padrão System)</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    {/* DDA Import (Original) */}
+                    <div className="card">
                     <h2 style={{ marginBottom: '1rem' }}>Sincronização DDA</h2>
                     <p className="text-muted" style={{ marginBottom: '2rem' }}>
                         Faça o upload do relatório extraído do banco (arquivo CSV). Iremos comparar com a base do sistema para evitar pagamentos duplicados.
@@ -1152,6 +1267,7 @@ const App = () => {
                             </div>
                         </div>
                     )}
+                    </div>
                 </div>
             )}
 
