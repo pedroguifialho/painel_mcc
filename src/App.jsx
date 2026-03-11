@@ -29,7 +29,8 @@ import {
     Download,
     ChevronLeft,
     ChevronRight,
-    History
+    History,
+    Loader2
 } from 'lucide-react';
 
 // Utility to parse DD/MM/YYYY to YYYY-MM-DD for easier comparison
@@ -634,10 +635,10 @@ const App = () => {
             
             // Map column indices
             const colIdx = {
-                data_movimento: headers.indexOf('data movim.'),
+                data_movimento: headers.indexOf('data movimento'),
                 documento: headers.indexOf('documento'),
-                descricao: headers.indexOf('histórico'),
-                nome: headers.indexOf('pessoa'),
+                descricao: headers.indexOf('descrição'),
+                nome: headers.indexOf('nome'),
                 valor: headers.indexOf('valor'),
                 vencimento: headers.indexOf('vencimento'),
                 observacao: headers.indexOf('observação')
