@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase';
 import Login from './components/Login';
 import AuditHistory from './components/AuditHistory';
 import RenegotiationPlanner from './components/RenegotiationPlanner';
+import PaymentLists from './components/PaymentLists';
 import ImportacaoGeral from './components/ImportacaoGeral';
 import ImportacaoDDA from './components/ImportacaoDDA';
 import ImportacaoExtras from './components/ImportacaoExtras';
@@ -39,7 +40,8 @@ import {
     Database,
     CreditCard,
     Handshake,
-    Trash2
+    Trash2,
+    ListChecks
 } from 'lucide-react';
 
 // Utility to parse DD/MM/YYYY to YYYY-MM-DD for easier comparison
@@ -367,6 +369,37 @@ const App = () => {
             fetchPayments();
         } catch (error) {
             alert("Erro ao excluir faturas: " + error.message);
+        }
+    };
+
+    const handleSaveList = async () => {
+        if (visibleSelectedItems.length === 0) return;
+        
+        const listName = window.prompt("Digite um nome para esta lista de pagamentos:");
+        if (!listName) return;
+
+        try {
+            const { error } = await supabase.from('payment_lists').insert({
+                name: listName,
+                user_id: user.id,
+                items: visibleSelectedItems.map(item => ({
+                    id: item.id,
+                    vencimento: item.vencimento,
+                    nome: item.nome,
+                    descricao: item.descricao,
+                    documento: item.documento,
+                    valor: item.valor,
+                    paid: false
+                }))
+            });
+
+            if (error) throw error;
+            
+            alert("Lista salva com sucesso!");
+            setSelectedIds(new Set());
+            setActiveTab('payment-lists');
+        } catch (error) {
+            alert("Erro ao salvar lista: " + error.message);
         }
     };
 
@@ -707,6 +740,13 @@ const App = () => {
                     IA Renegoc.
                 </button>
                 <button
+                    className={`nav-tab ${activeTab === 'payment-lists' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('payment-lists')}
+                >
+                    <ListChecks size={18} />
+                    Lista de Pagtos
+                </button>
+                <button
                     className={`nav-tab ${activeTab === 'audit' ? 'active' : ''}`}
                     onClick={() => setActiveTab('audit')}
                 >
@@ -957,14 +997,24 @@ const App = () => {
                                 </div>
                             </div>
                             
-                            <button 
-                                onClick={handleDeleteSelected}
-                                className="action-btn hover-danger"
-                                style={{ background: 'var(--color-danger)', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600, padding: '0.75rem 1.5rem' }}
-                            >
-                                <Trash2 size={18} />
-                                Excluir Selecionados
-                            </button>
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <button
+                                    onClick={handleSaveList}
+                                    className="btn btn-primary"
+                                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600, padding: '0.75rem 1.5rem' }}
+                                >
+                                    <Save size={18} />
+                                    Salvar Lista
+                                </button>
+                                <button 
+                                    onClick={handleDeleteSelected}
+                                    className="action-btn hover-danger"
+                                    style={{ background: 'var(--color-danger)', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600, padding: '0.75rem 1.5rem' }}
+                                >
+                                    <Trash2 size={18} />
+                                    Excluir Selecionados
+                                </button>
+                            </div>
                         </div>
                     )}
 
@@ -1267,6 +1317,10 @@ const App = () => {
             {/* --- CARDS TAB, RENEGOTIATION IA & IMPORT TAB ARE ABOVE --- */}
             {activeTab === 'renegotiation' && (
                 <RenegotiationPlanner data={filteredData} allData={baseData} />
+            )}
+
+            {activeTab === 'payment-lists' && (
+                <PaymentLists user={user} />
             )}
 
         </div>
