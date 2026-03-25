@@ -657,30 +657,19 @@ const App = () => {
 
     return (
         <div className={`container ${!isDarkMode ? 'light-theme' : ''}`}>
-             <header className="app-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <div style={{ background: 'var(--color-accent-subtle)', padding: '0.5rem', borderRadius: '8px', color: 'var(--color-accent)' }}>
+            <header className="app-header">
+                <div className="header-info">
+                    <div className="header-icon">
                         <Users size={32} />
                     </div>
                     <div>
                         <h1>Painel Financeiro - MCC</h1>
-                        <p className="text-muted">Olá, {user.email} | <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: 'var(--color-danger)', cursor: 'pointer', padding: 0, textDecoration: 'underline', fontSize: '0.8rem' }}>Sair</button></p>
+                        <p className="text-muted">Olá, {user.email} | <button onClick={handleLogout} className="logout-btn">Sair</button></p>
                     </div>
                 </div>
                 <button
                     onClick={() => setIsDarkMode(!isDarkMode)}
-                    className="card"
-                    style={{
-                        padding: '0.75rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: 'pointer',
-                        background: 'var(--color-bg-elevated)',
-                        transition: 'all 0.2s ease',
-                        border: '1px solid var(--color-border)',
-                        color: 'var(--color-accent)'
-                    }}
+                    className="theme-toggle"
                     title={isDarkMode ? 'Mudar para Tema Claro' : 'Mudar para Tema Escuro'}
                 >
                     {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
@@ -692,15 +681,13 @@ const App = () => {
                 <button
                     className={`nav-tab ${activeTab === 'dashboard' ? 'active' : ''}`}
                     onClick={() => setActiveTab('dashboard')}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                 >
                     <LayoutDashboard size={18} />
-                    Dashboard Diário
+                    Dashboard
                 </button>
                 <button
                     className={`nav-tab ${activeTab === 'reports' ? 'active' : ''}`}
                     onClick={() => setActiveTab('reports')}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                 >
                     <FileBarChart size={18} />
                     Relatórios
@@ -708,7 +695,6 @@ const App = () => {
                 <button
                     className={`nav-tab ${activeTab === 'cards' ? 'active' : ''}`}
                     onClick={() => setActiveTab('cards')}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                 >
                     <CreditCard size={18} />
                     Cartões
@@ -716,15 +702,13 @@ const App = () => {
                 <button
                     className={`nav-tab ${activeTab === 'renegotiation' ? 'active' : ''}`}
                     onClick={() => setActiveTab('renegotiation')}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                 >
                     <Handshake size={18} />
-                    Renegociação IA
+                    IA Renegoc.
                 </button>
                 <button
                     className={`nav-tab ${activeTab === 'audit' ? 'active' : ''}`}
                     onClick={() => setActiveTab('audit')}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                 >
                     <History size={18} />
                     Histórico
@@ -732,7 +716,6 @@ const App = () => {
                 <button
                     className={`nav-tab ${activeTab === 'import' ? 'active' : ''}`}
                     onClick={() => setActiveTab('import')}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto', color: 'var(--color-accent)' }}
                 >
                     <UploadCloud size={18} />
                     Importação

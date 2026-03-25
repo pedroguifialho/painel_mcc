@@ -106,29 +106,92 @@ h1 {
 
 /* Header */
 .app-header {
-  margin-bottom: 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2.5rem;
+  gap: 1rem;
+}
+
+.header-info {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.header-icon {
+  background: var(--color-accent-subtle);
+  padding: 0.625rem;
+  border-radius: 12px;
+  color: var(--color-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logout-btn {
+  background: none;
+  border: none;
+  color: var(--color-danger);
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  font-size: 0.8rem;
+  transition: opacity 0.2s;
+}
+
+.logout-btn:hover {
+  opacity: 0.8;
+}
+
+.theme-toggle {
+  padding: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: var(--color-bg-elevated);
+  transition: all 0.2s ease;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.theme-toggle:hover {
+  border-color: var(--color-accent);
+  background: var(--color-bg-surface);
+  transform: translateY(-1px);
 }
 
 /* Tabs Navigation */
 .nav-tabs {
   display: flex;
   gap: 1.5rem;
-  margin-bottom: 2rem;
+  margin-bottom: 2.5rem;
   border-bottom: 1px solid var(--color-border);
 }
 
 .nav-tab {
-  padding: 0.75rem 0;
+  padding: 0.875rem 0.25rem;
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--color-text-muted);
-  font-size: 1.05rem;
+  font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
   margin-bottom: -1px;
-  /* Overlap border-bottom */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+.nav-tab svg {
+  flex-shrink: 0;
 }
 
 .nav-tab:hover {
