@@ -1,0 +1,3 @@
+Data Movimento;Documento;Descrição;Nome;Valor;Vencimento;Observação
+25/03/2026;12345;Pagamento Teste;Fornecedor Teste Alpha;R$ 1.500,00;28/03/2026;Importação via teste
+25/03/2026;67890;Outro Pagamento;Fornecedor Teste Beta;R$ 250,50;30/03/2026;Segunda linha

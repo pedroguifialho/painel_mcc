@@ -2,6 +2,10 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 import Login from './components/Login';
 import AuditHistory from './components/AuditHistory';
+import RenegotiationPlanner from './components/RenegotiationPlanner';
+import ImportacaoGeral from './components/ImportacaoGeral';
+import ImportacaoDDA from './components/ImportacaoDDA';
+import ImportacaoExtras from './components/ImportacaoExtras';
 // import nativeData from './data/data.json'; // Deprecated for Supabase
 // import ddaData from './data/dda-imported.json'; // Deprecated for Supabase
 import {
@@ -19,6 +23,7 @@ import {
     TrendingUp,
     FilterX,
     UploadCloud,
+    CheckCircle,
     CheckCircle2,
     AlertCircle,
     Save,
@@ -30,7 +35,11 @@ import {
     ChevronLeft,
     ChevronRight,
     History,
-    Loader2
+    Loader2,
+    Database,
+    CreditCard,
+    Handshake,
+    Trash2
 } from 'lucide-react';
 
 // Utility to parse DD/MM/YYYY to YYYY-MM-DD for easier comparison
@@ -48,8 +57,21 @@ const parseCurrency = (valStr) => {
     return parseFloat(str) || 0;
 };
 
+const identifyCard = (doc) => {
+    if (!doc) return null;
+    const s = String(doc).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    
+    if (s.includes('caixa black mauro') || s.includes('cx black mauro')) return 'CX_BLACK_MAURO';
+    if (s.includes('elo nanquim mauro')) return 'ELO_NANQUIM_MAURO';
+    if (s.includes('caixa black junior') || s.includes('caixa black jr') || s.includes('cx black junior') || s.includes('cx black jr')) return 'CX_BLACK_JR';
+    if (s.includes('elo nanquim junior') || s.includes('elo nanquim jr')) return 'ELO_NANQUIM_JR';
+    
+    return null;
+};
+
 const App = () => {
     const [user, setUser] = useState(null);
+    const [selectedIds, setSelectedIds] = useState(new Set());
     const [activeTab, setActiveTab] = useState('dashboard');
     const [searchTerm, setSearchTerm] = useState('');
     const [supplierFilter, setSupplierFilter] = useState('');
@@ -57,6 +79,8 @@ const App = () => {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [showOverdueOnly, setShowOverdueOnly] = useState(false);
+    const [classFilter, setClassFilter] = useState('');
+    const [cardFilter, setCardFilter] = useState('');
 
 
     // --- THEME STATE ---
@@ -75,16 +99,7 @@ const App = () => {
         }
     }, [isDarkMode]);
 
-    // --- DDA IMPORT STATE ---
-    const [isProcessingFile, setIsProcessingFile] = useState(false);
-    // Preview now has: newRecords, divergentRecords, exactRecords
-    const [ddaPreview, setDdaPreview] = useState(null);
-    const [isSavingInProgress, setIsSavingInProgress] = useState(false);
 
-    const [ddaIgnoredSuppliers, setDdaIgnoredSuppliers] = useState(() => {
-        try { return JSON.parse(localStorage.getItem('ddaIgnoredSuppliers') || '[]'); }
-        catch { return []; }
-    });
 
     useEffect(() => {
         // Check current session
@@ -107,8 +122,7 @@ const App = () => {
     const [localDdaData, setLocalDdaData] = useState([]);
     const [dbData, setDbData] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [csvFile, setCsvFile] = useState(null);
-    const [isReseting, setIsReseting] = useState(false);
+
 
     // 1. Fetch initial data from Supabase
     const fetchPayments = useCallback(async () => {
@@ -180,9 +194,15 @@ const App = () => {
                 isOverdue = item.data_iso < todayIso;
             }
 
-            return textMatches && supplierMatches && afterStart && beforeEnd && isOverdue;
+            const classMatches = classFilter === '' || 
+                (classFilter === 'URGENTE' ? (item.classificacao === 'URGENTE' || item.classificacao === 'URGENTES') : item.classificacao === classFilter);
+
+            const cardType = identifyCard(item.documento);
+            const cardMatches = cardFilter === '' || cardType === cardFilter;
+
+            return textMatches && supplierMatches && afterStart && beforeEnd && isOverdue && classMatches && cardMatches;
         });
-    }, [baseData, searchTerm, supplierFilter, startDate, endDate, showOverdueOnly, activeTab]);
+    }, [baseData, searchTerm, supplierFilter, startDate, endDate, showOverdueOnly, activeTab, classFilter, cardFilter]);
 
     const uniqueSuppliers = useMemo(() => {
         return [...new Set(baseData.map(item => item.nome))].sort();
@@ -225,6 +245,57 @@ const App = () => {
         return { total, count, suppliersCount, topSuppliersChartData, dailyChartData, oldestOverdue };
     }, [filteredData, activeTab, showOverdueOnly]);
 
+    const bestDaysToPay = useMemo(() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const twoMonthsLater = new Date(today.getFullYear(), today.getMonth() + 3, 0);
+
+        const dailyTotals = {};
+
+        // Pre-fill all working days with 0
+        let currDate = new Date(today);
+        while (currDate <= twoMonthsLater) {
+            const dayOfWeek = currDate.getDay();
+            // Ignorar sábados (6) e domingos (0)
+            if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                const dateStr = currDate.toISOString().split('T')[0];
+                dailyTotals[dateStr] = 0;
+            }
+            currDate.setDate(currDate.getDate() + 1);
+        }
+
+        baseData.forEach(item => {
+            if (!item.data_iso) return;
+            // Use local date parsing equivalent to how we initialized
+            const dIsoKey = item.data_iso.substring(0, 10);
+            if (dailyTotals[dIsoKey] !== undefined) {
+                dailyTotals[dIsoKey] += (item.valor || 0);
+            }
+        });
+
+        const sortedDays = Object.keys(dailyTotals)
+            .map(date => ({ date, total: dailyTotals[date] }))
+            .sort((a, b) => a.total - b.total); // Sort lowest first
+
+        // Para evitar sugerir dias seguidos (ex: 12, 13, 14), vamos pegar dias com gap de 3 dias
+        const result = [];
+        for (const day of sortedDays) {
+            const dFormat = new Date(day.date + 'T00:00:00');
+            const hasConflict = result.some(resDay => {
+                const rFormat = new Date(resDay.date + 'T00:00:00');
+                const diffDays = Math.abs((dFormat - rFormat) / (1000 * 60 * 60 * 24));
+                return diffDays < 3;
+            });
+            if (!hasConflict) {
+                result.push(day);
+            }
+            if (result.length >= 3) break;
+        }
+
+        return result;
+    }, [baseData]);
+
     const COLORS = [
         '#f97316', '#3b82f6', '#8b5cf6', '#10b981', '#ef4444',
         '#06b6d4', '#ec4899', '#f59e0b', '#14b8a6', '#6366f1',
@@ -244,24 +315,78 @@ const App = () => {
         setSupplierFilter('');
         setStartDate('');
         setEndDate('');
+        setClassFilter('');
+        setCardFilter('');
         setShowOverdueOnly(false);
     };
 
+    // --- SELECTION & DELETE LOGIC ---
+    const visibleSelectedItems = useMemo(() => {
+        return filteredData.filter(item => selectedIds.has(item.id));
+    }, [filteredData, selectedIds]);
+
+    const selectedItemsSum = useMemo(() => {
+        return visibleSelectedItems.reduce((acc, curr) => acc + curr.valor, 0);
+    }, [visibleSelectedItems]);
+
+    const isAllVisibleSelected = filteredData.length > 0 && 
+                                 visibleSelectedItems.length === filteredData.length;
+
+    const toggleSelectAll = () => {
+        const newSet = new Set(selectedIds);
+        if (isAllVisibleSelected) {
+            filteredData.forEach(item => newSet.delete(item.id));
+        } else {
+            filteredData.forEach(item => newSet.add(item.id));
+        }
+        setSelectedIds(newSet);
+    };
+
+    const toggleSelection = (id) => {
+        if (!id) return; // Prevent selection if element has no ID mapped yet
+        const newSet = new Set(selectedIds);
+        if (newSet.has(id)) newSet.delete(id);
+        else newSet.add(id);
+        setSelectedIds(newSet);
+    };
+
+    const handleDeleteSelected = async () => {
+        const idsToDelete = visibleSelectedItems.map(item => item.id).filter(id => id);
+        if (idsToDelete.length === 0) return;
+        
+        if (!window.confirm(`Tem certeza que deseja excluir as ${idsToDelete.length} faturas selecionadas? (Essa ação é irreversível)`)) return;
+
+        try {
+            const { error } = await supabase.from('payments').delete().in('id', idsToDelete);
+            if (error) throw error;
+            
+            const newSet = new Set(selectedIds);
+            idsToDelete.forEach(id => newSet.delete(id));
+            setSelectedIds(newSet);
+            // Re-fetch handled generally by realtime subscription, but we can force:
+            fetchPayments();
+        } catch (error) {
+            alert("Erro ao excluir faturas: " + error.message);
+        }
+    };
+
     // --- SAT-FRI WEEK LOGIC ---
-    const setSaturdayToFridayWeek = useCallback(() => {
-        const today = new Date();
-        const day = today.getDay(); // 0 (Sun) to 6 (Sat)
+    const handlePresetDateRange = useCallback((range) => {
+        if (range === 'week') {
+            const today = new Date();
+            const day = today.getDay(); // 0 (Sun) to 6 (Sat)
 
-        // Target Saturday: if day is 6 (Sat), it's today. If < 6, it's (day + 1) days ago.
-        const diffToSat = (day === 6) ? 0 : (day + 1);
-        const saturday = new Date(today);
-        saturday.setDate(today.getDate() - diffToSat);
+            // Target Saturday: if day is 6 (Sat), it's today. If < 6, it's (day + 1) days ago.
+            const diffToSat = (day === 6) ? 0 : (day + 1);
+            const saturday = new Date(today);
+            saturday.setDate(today.getDate() - diffToSat);
 
-        const friday = new Date(saturday);
-        friday.setDate(saturday.getDate() + 6);
+            const friday = new Date(saturday);
+            friday.setDate(saturday.getDate() + 6);
 
-        setStartDate(saturday.toISOString().split('T')[0]);
-        setEndDate(friday.toISOString().split('T')[0]);
+            setStartDate(saturday.toISOString().split('T')[0]);
+            setEndDate(friday.toISOString().split('T')[0]);
+        }
     }, []);
 
     // --- EXPORT LOGIC ---
@@ -404,298 +529,127 @@ const App = () => {
         doc.save(fileName);
     };
 
+    const exportBySupplierPDF = () => {
+        const doc = new jsPDF({
+            orientation: 'p',
+            unit: 'mm',
+            format: 'a4',
+            putOnlyUsedFonts: true,
+            compress: true
+        });
+        
+        const dateNow = new Date().toLocaleDateString('pt-BR');
 
-    // --- DDA IMPORT LOGIC ---
-    const handleFileUpload = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+        // --- Header ---
+        doc.setFontSize(18);
+        doc.setTextColor(234, 88, 12);
+        doc.text('Relatorio Financeiro - Fornecedores', 14, 22);
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+        doc.text(`Gerado em: ${dateNow}`, 14, 30);
+        doc.text(`Periodo: ${startDate || 'Inicio'} ate ${endDate || 'Hoje'}`, 14, 36);
+        
+        // Group data by supplier
+        const groupedData = filteredData.reduce((acc, curr) => {
+            const supplier = curr.nome || 'SEM FORNECEDOR';
+            if (!acc[supplier]) acc[supplier] = [];
+            acc[supplier].push(curr);
+            return acc;
+        }, {});
 
-        setIsProcessingFile(true);
-        const reader = new FileReader();
+        const sortedSuppliers = Object.keys(groupedData).sort((a, b) => a.localeCompare(b));
+        const totalGeral = filteredData.reduce((acc, curr) => acc + curr.valor, 0);
+        const fmt = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
-        reader.onload = (event) => {
-            const text = event.target.result;
-            processDDAText(text);
-        };
+        let yPos = 46;
 
-        reader.readAsText(file);
-        e.target.value = null; // Reset input
-    };
+        // Page 1: Supplier Summary
+        doc.setFontSize(12);
+        doc.setTextColor(0);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Resumo Consolidado por Fornecedor', 14, yPos);
+        yPos += 8;
+        
+        const summaryRows = sortedSuppliers.map(sup => {
+            const supTotal = groupedData[sup].reduce((s, it) => s + it.valor, 0);
+            return [sup, fmt(supTotal)];
+        });
+        
+        autoTable(doc, {
+            head: [['Fornecedor', 'Total']],
+            body: summaryRows,
+            startY: yPos,
+            theme: 'grid',
+            headStyles: { fillColor: [59, 130, 246], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10 },
+            styles: { fontSize: 9, cellPadding: 3 }
+        });
 
-    const processDDAText = (text) => {
-        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l !== '');
+        // Add details pages
+        doc.addPage();
+        yPos = 20;
 
-        if (lines.length < 6) {
-            setIsProcessingFile(false);
-            alert('Formato de arquivo inválido. O arquivo DDA deve ter dados a partir da linha 6.');
-            return;
-        }
+        sortedSuppliers.forEach((supplier, idx) => {
+            const records = groupedData[supplier];
+            const supTotal = records.reduce((s, it) => s + it.valor, 0);
 
-        const importedRecords = [];
+            const tableRows = records.map(item => [
+                item.vencimento || '-',
+                (item.descricao || item.categoria || 'Sem descricao').substring(0, 40),
+                item.documento || '-',
+                fmt(item.valor)
+            ]);
 
-        // Data starts from index 5 (6th line). 
-        for (let i = 5; i < lines.length; i++) {
-            const values = lines[i].split(';');
-
-            // Expected columns based on requirements:
-            // A (0): Vencimento
-            // B (1): Beneficiário
-            // E (4): Valor
-            let vencimento = values[0] ? values[0].trim() : '';
-            let nome = values[1] ? values[1].trim().toUpperCase() : '';
-            let valorStr = values[4] ? values[4].trim() : '';
-
-            // Ignore the "Total" line at the bottom
-            if (!vencimento || vencimento.toLowerCase().includes('total')) continue;
-
-            const data_iso = parseDateString(vencimento);
-            if (!data_iso) continue; // Skip invalid dates
-
-            const valor = parseCurrency(valorStr);
-            if (valor <= 0) continue; // Skip zero or invalid values
-
-            // Generate a unique transient ID for UI tracking
-            const tempId = 'id_' + i + '_' + Date.now();
-
-            importedRecords.push({
-                _id: tempId,
-                vencimento,
-                nome: nome || 'FORNECEDOR DDA NÃO IDENTIF.',
-                descricao: 'BOLETO DDA IMPORTADO',
-                observacao: 'IMPORTADO AUTOMATICAMENTE (DDA)',
-                valor,
-                data_iso,
-                action: 'pending', // 'pending', 'insert', 'ignore', 'edit'
-            });
-        }
-
-        // Filter out those present in global ignore list
-        const filteredRecords = importedRecords.filter(r => !ddaIgnoredSuppliers.includes(r.nome));
-        compareDDAWithBase(filteredRecords);
-    };
-
-    const compareDDAWithBase = (importedRecords) => {
-        let newRecords = [];
-        let divergentRecords = [];
-        let exactRecords = [];
-
-        importedRecords.forEach(record => {
-            let matchType = 'new';
-            let bestBaseMatch = null;
-
-            for (const baseItem of baseData) {
-                const isSameName = (baseItem.nome || '').toLowerCase() === (record.nome).toLowerCase();
-                const isExactDate = baseItem.data_iso === record.data_iso;
-                const valueDiff = Math.abs(baseItem.valor - record.valor);
-                const isExactValue = valueDiff < 0.01;
-
-                // Exact match logic
-                if (isSameName && isExactDate && isExactValue) {
-                    matchType = 'exact';
-                    bestBaseMatch = baseItem;
-                    break;
-                }
-
-                // Divergence logic: value diff <= 5 AND date diff <= 3 days
-                if (valueDiff <= 5) {
-                    const baseDateObj = new Date(baseItem.data_iso);
-                    const recDateObj = new Date(record.data_iso);
-                    const diffTime = Math.abs(recDateObj - baseDateObj);
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-                    if (diffDays <= 3) {
-                        if (matchType !== 'exact') {
-                            matchType = 'divergent';
-                            bestBaseMatch = baseItem; // keep the reference to show difference
-                        }
-                    }
-                }
-            }
-
-            if (matchType === 'exact') {
-                record.baseMatch = bestBaseMatch;
-                exactRecords.push(record);
-            } else if (matchType === 'divergent') {
-                record.baseMatch = bestBaseMatch;
-                divergentRecords.push(record);
-            } else {
-                newRecords.push(record);
+            try {
+                autoTable(doc, {
+                    head: [
+                        [{
+                            content: `${supplier} | Total: ${fmt(supTotal)}`,
+                            colSpan: 4,
+                            styles: {
+                                fillColor: [30, 64, 175], // Darker Blue
+                                textColor: [255, 255, 255],
+                                fontStyle: 'bold',
+                                fontSize: 10,
+                                halign: 'left',
+                                cellPadding: { top: 4, bottom: 4, left: 6, right: 6 }
+                            }
+                        }],
+                        ['Vencimento', 'Descricao', 'Documento', 'Valor']
+                    ],
+                    body: tableRows,
+                    startY: yPos,
+                    theme: 'grid',
+                    headStyles: {
+                        fillColor: [240, 244, 255],
+                        textColor: [50, 50, 50],
+                        fontStyle: 'bold',
+                        fontSize: 8
+                    },
+                    styles: {
+                        fontSize: 8,
+                        valign: 'middle',
+                        cellPadding: { top: 3, bottom: 3, left: 3, right: 3 },
+                        overflow: 'linebreak'
+                    },
+                    columnStyles: {
+                        0: { cellWidth: 25, halign: 'center' },
+                        1: { halign: 'left' },
+                        2: { cellWidth: 35, halign: 'center' },
+                        3: { cellWidth: 30, halign: 'right' }
+                    },
+                    margin: { left: 14, right: 14 }
+                });
+                yPos = doc.lastAutoTable.finalY + 10;
+            } catch (err) {
+                console.error("Error in autoTable:", err);
             }
         });
 
-        setDdaPreview({ newRecords, divergentRecords, exactRecords });
-        setIsProcessingFile(false);
+        const fileName = `relatorio_fornecedores_${startDate || 'geral'}_a_${endDate || 'hoje'}.pdf`;
+        doc.save(fileName);
     };
 
-    const handleDDAAction = (id, actionType, sourceList) => {
-        setDdaPreview(prev => {
-            const newState = { ...prev };
 
-            // Special case: moving divergent to new
-            if (actionType === 'unlink' && sourceList === 'divergentRecords') {
-                const list = [...newState.divergentRecords];
-                const index = list.findIndex(r => r._id === id);
-                if (index !== -1) {
-                    const [item] = list.splice(index, 1);
-                    item.action = 'pending';
-                    item.baseMatch = null;
-                    newState.divergentRecords = list;
-                    newState.newRecords = [...newState.newRecords, item];
-                }
-                return newState;
-            }
-
-            const list = [...newState[sourceList]];
-            const index = list.findIndex(r => r._id === id);
-            if (index !== -1) {
-                if (actionType === 'delete') {
-                    list.splice(index, 1);
-                } else {
-                    list[index] = { ...list[index], action: actionType };
-                }
-                newState[sourceList] = list;
-            }
-            return newState;
-        });
-    };
-
-    const handleIgnoreSupplier = (nome) => {
-        if (!window.confirm(`Tem certeza que deseja ignorar permanentemente todos os lançamentos DDA futuros do fornecedor "${nome}"?`)) return;
-
-        setDdaIgnoredSuppliers(prev => [...prev, nome]);
-
-        // Remove immediately from current view
-        setDdaPreview(prev => {
-            return {
-                newRecords: prev.newRecords.filter(r => r.nome !== nome),
-                divergentRecords: prev.divergentRecords.filter(r => r.nome !== nome),
-                exactRecords: prev.exactRecords.filter(r => r.nome !== nome),
-            };
-        });
-    };
-
-    const saveToBackend = async () => {
-        if (!ddaPreview) return;
-
-        // Filter those explicitely meant to be inserted
-        const toInsert = [
-            ...ddaPreview.newRecords.filter(r => r.action === 'insert'),
-            ...ddaPreview.divergentRecords.filter(r => r.action === 'insert') // Or update, based on logic
-        ];
-
-        if (toInsert.length === 0) return alert('Nenhum lançamento foi selecionado para Inserir.');
-
-        setIsSavingInProgress(true);
-
-        try {
-            const payload = toInsert.map(r => ({
-                vencimento: r.vencimento,
-                nome: r.nome,
-                descricao: r.descricao,
-                valor: r.valor,
-                observacao: r.observacao
-            }));
-
-            // Actual save operation to Supabase
-            const { error } = await supabase
-                .from('payments')
-                .insert(payload);
-            if (error) throw error;
-
-            alert(`${toInsert.length} lançamentos importados com sucesso!\n\nEles já constam no Dashboard Geral vinculados ao banco de dados.`);
-            setDdaPreview(null);
-            // fetchPayments() will be called automatically by Realtime subscription
-            setActiveTab('dashboard'); // Redirect to general list to view changes
-        } catch (err) {
-            console.error(err);
-            alert('Erro ao salvar no banco de dados: ' + (err.message || 'Verifique o console.'));
-        } finally {
-            setIsSavingInProgress(false);
-        }
-    };
-
-    // --- NEW: General Spreadsheet Import Logic ---
-    const handleGeneralCsvImport = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = async (event) => {
-            const text = event.target.result;
-            const lines = text.split('\n');
-            
-            // Logic based on CSV format: skip 3 lines, 4th is header, skip last
-            if (lines.length < 5) {
-                alert('Arquivo CSV parece curto demais ou inválido.');
-                return;
-            }
-
-            const headerLine = lines[3]; // Line 4 (index 3)
-            const headers = headerLine.split(';').map(h => h.trim().toLowerCase());
-            
-            // Map column indices
-            const colIdx = {
-                data_movimento: headers.indexOf('data movimento'),
-                documento: headers.indexOf('documento'),
-                descricao: headers.indexOf('descrição'),
-                nome: headers.indexOf('nome'),
-                valor: headers.indexOf('valor'),
-                vencimento: headers.indexOf('vencimento'),
-                observacao: headers.indexOf('observação')
-            };
-
-            const dataRows = lines.slice(4, -1); // Skip 4 lines and last line (totals)
-            const newRecords = dataRows
-                .map(line => {
-                    const cells = line.split(';');
-                    if (cells.length < 5) return null;
-                    return {
-                        data_movimento: cells[colIdx.data_movimento] || '',
-                        documento: cells[colIdx.documento] || '',
-                        descricao: cells[colIdx.descricao] || '',
-                        nome: cells[colIdx.nome] || '',
-                        valor: parseCurrency(cells[colIdx.valor]),
-                        vencimento: cells[colIdx.vencimento] || '',
-                        observacao: cells[colIdx.observacao] || '',
-                        source: 'native'
-                    };
-                })
-                .filter(r => r && r.vencimento && r.nome);
-
-            if (window.confirm(`Isso irá APAGAR TODOS os dados atuais (${dbData.length} registros) e importar ${newRecords.length} registros da planilha. Deseja continuar?`)) {
-                setIsReseting(true);
-                try {
-                    // 1. Delete all records
-                    const { error: delError } = await supabase.from('payments').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-                    if (delError) throw delError;
-
-                    // 2. Insert new records in batches
-                    const batchSize = 500;
-                    for (let i = 0; i < newRecords.length; i += batchSize) {
-                        const batch = newRecords.slice(i, i + batchSize);
-                        const { error: insError } = await supabase.from('payments').insert(batch);
-                        if (insError) throw insError;
-                    }
-
-                    alert(`Banco de dados resetado e ${newRecords.length} registros importados com sucesso!`);
-                    fetchPayments();
-                    setActiveTab('dashboard');
-                } catch (err) {
-                    console.error(err);
-                    alert('Erro ao resetar banco: ' + err.message);
-                } finally {
-                    setIsReseting(false);
-                }
-            }
-        };
-        reader.readAsText(file, 'ISO-8859-1'); // Common for BR CSVs
-    };
-
-    // Safely expose functions to window for testing
-    useEffect(() => {
-        window.__test_processDDAText = processDDAText;
-        window.__test_saveToBackend = saveToBackend;
-    }, [processDDAText, saveToBackend]);
 
     if (!user) {
         return <Login onLogin={setUser} />;
@@ -752,6 +706,22 @@ const App = () => {
                     Relatórios
                 </button>
                 <button
+                    className={`nav-tab ${activeTab === 'cards' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('cards')}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                >
+                    <CreditCard size={18} />
+                    Cartões
+                </button>
+                <button
+                    className={`nav-tab ${activeTab === 'renegotiation' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('renegotiation')}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                >
+                    <Handshake size={18} />
+                    Renegociação IA
+                </button>
+                <button
                     className={`nav-tab ${activeTab === 'audit' ? 'active' : ''}`}
                     onClick={() => setActiveTab('audit')}
                     style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
@@ -776,7 +746,7 @@ const App = () => {
                         <FilterX size={18} className="stat-icon" /> Filtros de Consulta
                     </h3>
                     <div className="filters-bar">
-                        <div className="inputs-row">
+                        <div className="inputs-grid">
                             <div className="input-group">
                                 <label>Descrição / Fornecedor</label>
                                 <div className="input-icon-wrapper">
@@ -800,6 +770,17 @@ const App = () => {
                             </div>
 
                             <div className="input-group">
+                                <label>Classificação</label>
+                                <select value={classFilter} onChange={(e) => setClassFilter(e.target.value)}>
+                                    <option value="">Todas</option>
+                                    <option value="COMPRAS">Compras</option>
+                                    <option value="TERCEIROS">Terceiros</option>
+                                    <option value="URGENTE">Urgente</option>
+                                    <option value="OUTROS">Outros</option>
+                                </select>
+                            </div>
+
+                            <div className="input-group">
                                 <label>Início de Dados</label>
                                 <input
                                     type="date"
@@ -817,53 +798,95 @@ const App = () => {
                                 />
                             </div>
 
-                            {(searchTerm || supplierFilter || startDate || endDate || showOverdueOnly) && (
-                                <button
-                                    onClick={() => { clearFilters(); setShowOverdueOnly(false); }}
-                                    className="action-btn"
-                                    style={{
-                                        background: 'var(--color-bg-elevated)',
-                                        color: 'var(--color-text-muted)',
-                                        border: '1px solid var(--color-border)',
-                                        padding: '0.625rem 1.25rem'
-                                    }}
-                                    title="Limpar Filtros"
-                                >
-                                    Limpar
-                                </button>
-                            )}
+                            <div className="input-group">
+                                <label>Cartão de Crédito</label>
+                                <select value={cardFilter} onChange={(e) => setCardFilter(e.target.value)}>
+                                    <option value="">Todos os Cartões</option>
+                                    <option value="CX_BLACK_MAURO">Caixa Black Mauro</option>
+                                    <option value="ELO_NANQUIM_MAURO">Elo Nanquim Mauro</option>
+                                    <option value="CX_BLACK_JR">Caixa Black Jr</option>
+                                    <option value="ELO_NANQUIM_JR">Elo Nanquim Jr</option>
+                                </select>
+                            </div>
+
+                            {/* --- WIDGET MELHORES DIAS (INTEGRADO E SIMÉTRICO) --- */}
+                            <div className="best-days-container">
+                                <div className="best-days-header">
+                                    <CheckCircle size={16} color="var(--color-success)" />
+                                    <span>Sugestão: Melhores dias para novas dívidas</span>
+                                </div>
+                                <div className="best-days-grid">
+                                    {bestDaysToPay.map((item, idx) => {
+                                        const d = new Date(item.date + 'T00:00:00');
+                                        const fmtDate = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+                                        return (
+                                            <div key={idx} className="best-day-card">
+                                                <span className="best-day-date">{fmtDate}</span>
+                                                <span className="best-day-label">Sugerido</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         </div>
 
-                        <div className="actions-row">
-                            <button
-                                onClick={setSaturdayToFridayWeek}
-                                className="action-btn"
-                                style={{ background: 'var(--color-bg-elevated)', color: 'var(--color-text-base)', border: '1px solid var(--color-border)' }}
-                            >
-                                <CalendarDays size={18} /> Semana (Sáb - Sexta)
-                            </button>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginTop: '0.5rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                {(searchTerm || supplierFilter || startDate || endDate || showOverdueOnly) && (
+                                    <button
+                                        onClick={() => { clearFilters(); setShowOverdueOnly(false); }}
+                                        className="action-btn"
+                                        style={{
+                                            background: 'var(--color-bg-elevated)',
+                                            color: 'var(--color-text-muted)',
+                                            border: '1px solid var(--color-border)',
+                                            padding: '0.625rem 1.25rem'
+                                        }}
+                                        title="Limpar Filtros"
+                                    >
+                                        Limpar
+                                    </button>
+                                )}
+                            </div>
+                        </div>
 
-                            <button
-                                onClick={exportToPDF}
-                                className="action-btn"
-                                disabled={filteredData.length === 0}
-                            >
-                                <Download size={18} /> Exportar PDF
-                            </button>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginTop: '1rem' }}>
+                            <div className="actions-row">
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => handlePresetDateRange('week')}
+                                >
+                                    <CalendarDays size={16} />
+                                    Semana (Sáb - Sexta)
+                                </button>
+                                <button
+                                    className="btn btn-primary"
+                                    onClick={exportToPDF}
+                                >
+                                    <Download size={16} />
+                                    Exportar PDF
+                                </button>
+                                <button
+                                    className="btn btn-warning"
+                                    onClick={exportBySupplierPDF}
+                                >
+                                    <Download size={16} />
+                                    PDF por Fornecedor
+                                </button>
 
-                            <button
-                                onClick={() => setShowOverdueOnly(!showOverdueOnly)}
-                                className="action-btn"
-                                style={{
-                                    background: showOverdueOnly ? 'var(--color-danger)' : 'var(--color-bg-elevated)',
-                                    color: showOverdueOnly ? 'white' : 'var(--color-text-base)',
-                                    border: `1px solid ${showOverdueOnly ? 'var(--color-danger)' : 'var(--color-border)'}`,
-                                    fontWeight: showOverdueOnly ? '700' : '600'
-                                }}
-                            >
-                                <AlertTriangle size={18} />
-                                {showOverdueOnly ? 'Inadimplência Ativa' : 'Ver Atrasados'}
-                            </button>
+                                <button
+                                    className="btn"
+                                    onClick={() => setShowOverdueOnly(!showOverdueOnly)}
+                                    style={{
+                                        background: showOverdueOnly ? 'var(--color-danger)' : 'var(--color-bg-elevated)',
+                                        color: showOverdueOnly ? 'white' : 'var(--color-text-base)',
+                                        borderColor: showOverdueOnly ? 'var(--color-danger)' : 'var(--color-border)'
+                                    }}
+                                >
+                                    <AlertTriangle size={16} />
+                                    {showOverdueOnly ? 'Ver Todas' : 'Ver Atrasados'}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -938,11 +961,43 @@ const App = () => {
                         </div>
                     </div>
 
+                    {/* Action Bar for Selection */}
+                    {visibleSelectedItems.length > 0 && (
+                        <div className="card" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--color-accent-subtle)', border: '1px solid var(--color-accent)', padding: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                <CheckCircle2 size={24} color="var(--color-accent)" />
+                                <div>
+                                    <h3 style={{ margin: 0, color: 'var(--color-text-base)', fontSize: '1.1rem' }}>{visibleSelectedItems.length} {visibleSelectedItems.length === 1 ? 'item selecionado' : 'itens selecionados'}</h3>
+                                    <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
+                                        Soma total: <strong style={{color: 'var(--color-accent)', fontSize: '1.1rem'}}>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(selectedItemsSum)}</strong>
+                                    </p>
+                                </div>
+                            </div>
+                            
+                            <button 
+                                onClick={handleDeleteSelected}
+                                className="action-btn hover-danger"
+                                style={{ background: 'var(--color-danger)', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600, padding: '0.75rem 1.5rem' }}
+                            >
+                                <Trash2 size={18} />
+                                Excluir Selecionados
+                            </button>
+                        </div>
+                    )}
+
                     {/* Records Table */}
                     <div className="table-container">
                         <table>
                             <thead>
                                 <tr>
+                                    <th style={{ width: '40px', textAlign: 'center' }}>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={isAllVisibleSelected} 
+                                            onChange={toggleSelectAll} 
+                                            style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                        />
+                                    </th>
                                     <th>Vencimento</th>
                                     <th>Documento</th>
                                     <th>Fornecedor</th>
@@ -953,8 +1008,18 @@ const App = () => {
                             </thead>
                             <tbody>
                                 {filteredData.map((item, idx) => (
-                                    <tr key={idx}>
-                                        <td className="date-cell">
+                                    <tr key={idx} style={{ backgroundColor: selectedIds.has(item.id) ? 'var(--color-accent-subtle)' : undefined, transition: 'background-color 0.2s ease' }}>
+                                        <td style={{ textAlign: 'center', cursor: 'pointer' }} onClick={() => toggleSelection(item.id)}>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={selectedIds.has(item.id)}
+                                                onChange={() => toggleSelection(item.id)}
+                                                onClick={(e) => e.stopPropagation()}
+                                                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                                disabled={!item.id} // Prevents checking transient items if they have no id
+                                            />
+                                        </td>
+                                        <td className="date-cell" onClick={() => toggleSelection(item.id)}>
                                             {item.vencimento}
                                             {item.source === 'dda' && <span className="badge badge-dda">Via DDA</span>}
                                         </td>
@@ -1070,208 +1135,156 @@ const App = () => {
 
             {activeTab === 'import' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                    {/* General Spreadsheet Import */}
-                    <div className="card">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
-                            <div style={{ background: 'var(--color-primary-subtle)', padding: '0.5rem', borderRadius: '8px', color: 'var(--color-primary)' }}>
-                                <UploadCloud size={24} />
-                            </div>
-                            <h2 style={{ fontSize: '1.25rem', margin: 0 }}>Importar Planilha Geral (Reset)</h2>
-                        </div>
-                        
-                        <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-                            Use esta opção para atualizar toda a base de dados a partir de uma exportação do seu sistema. 
-                            <strong style={{ color: 'var(--color-danger)' }}> Atenção: Isso apaga todos os registros atuais!</strong>
-                        </p>
-
-                        <div style={{ background: 'rgba(0,0,0,0.1)', border: '1px dashed var(--color-border)', borderRadius: '12px', padding: '2rem', textAlign: 'center' }}>
-                            <input
-                                type="file"
-                                id="general-csv-upload"
-                                accept=".csv"
-                                onChange={handleGeneralCsvImport}
-                                style={{ display: 'none' }}
-                                disabled={isReseting}
-                            />
-                            <label htmlFor="general-csv-upload" style={{ cursor: isReseting ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
-                                <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--color-bg-base)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--color-border)' }}>
-                                    {isReseting ? <Loader2 className="animate-spin" /> : <FileBarChart size={24} />}
-                                </div>
-                                <div>
-                                    <span style={{ fontWeight: 600, display: 'block' }}>{isReseting ? 'Sincronizando Banco de Dados...' : 'Clique para selecionar o CSV Geral'}</span>
-                                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Formatos suportados: .csv (Exportação Padrão System)</span>
-                                </div>
-                            </label>
-                        </div>
-                    </div>
-
-                    {/* DDA Import (Original) */}
-                    <div className="card">
-                    <h2 style={{ marginBottom: '1rem' }}>Sincronização DDA</h2>
-                    <p className="text-muted" style={{ marginBottom: '2rem' }}>
-                        Faça o upload do relatório extraído do banco (arquivo CSV). Iremos comparar com a base do sistema para evitar pagamentos duplicados.
-                    </p>
-
-                    {!ddaPreview ? (
-                        <label className="dropzone">
-                            <UploadCloud size={48} />
-                            <div>
-                                <h3 style={{ color: 'var(--color-text-base)' }}>Clique para anexar arquivo</h3>
-                                <span className="text-muted">Apenas formato .csv (separado por ponto e vírgula)</span>
-                            </div>
-                            <input
-                                type="file"
-                                accept=".csv"
-                                onChange={handleFileUpload}
-                                style={{ display: 'none' }}
-                                disabled={isProcessingFile}
-                            />
-                            {isProcessingFile && <div style={{ marginTop: '1rem' }}>Processando arquivo...</div>}
-                        </label>
-                    ) : (
-                        <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                                <div>
-                                    <h3 style={{ fontSize: '1.25rem' }}>Resultado da Análise</h3>
-                                    <p className="text-muted">
-                                        Novos/Pendentes: <strong style={{ color: 'var(--color-accent)' }}>{ddaPreview.newRecords.length + ddaPreview.divergentRecords.length}</strong> |
-                                        Já Conciliados: <strong>{ddaPreview.exactRecords.length}</strong>
-                                    </p>
-                                </div>
-                                <button
-                                    className="action-btn"
-                                    onClick={saveToBackend}
-                                    disabled={isSavingInProgress}
-                                >
-                                    {isSavingInProgress ? 'Salvando...' : (
-                                        <>
-                                            <Save size={18} /> Salvar Lançamentos Selecionados
-                                        </>
-                                    )}
-                                </button>
-                            </div>
-
-                            {ddaPreview.newRecords.length > 0 && (
-                                <div className="card" style={{ marginBottom: '2rem' }}>
-                                    <h4><AlertCircle size={16} /> Lançamentos Novos (Não Constam)</h4>
-                                    <div className="table-container" style={{ marginTop: '1rem' }}>
-                                        <table>
-                                            <thead>
-                                                <tr>
-                                                    <th>Data</th>
-                                                    <th>Fornecedor</th>
-                                                    <th>Valor</th>
-                                                    <th style={{ textAlign: 'right' }}>Ações</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {ddaPreview.newRecords.map((r, i) => (
-                                                    <tr key={`new-${i}`} style={{ opacity: r.action === 'ignored' ? 0.4 : 1 }}>
-                                                        <td className="date-cell">{r.vencimento}</td>
-                                                        <td>{r.nome}</td>
-                                                        <td className="value-cell">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(r.valor)}</td>
-                                                        <td style={{ textAlign: 'right' }}>
-                                                            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                                                                {r.action !== 'insert' ? (
-                                                                    <button onClick={() => handleDDAAction(r._id, 'insert', 'newRecords')} style={{ background: 'var(--color-accent)', color: 'white', border: 'none', padding: '0.25rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}>Inserir</button>
-                                                                ) : (
-                                                                    <button onClick={() => handleDDAAction(r._id, 'pending', 'newRecords')} style={{ background: 'var(--color-success)', color: 'white', border: 'none', padding: '0.25rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}><CheckCircle2 size={12} /> Confirmado</button>
-                                                                )}
-                                                                <button onClick={() => handleDDAAction(r._id, 'delete', 'newRecords')} style={{ background: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)', padding: '0.25rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}>Ignorar Boleto</button>
-                                                                <button onClick={() => handleIgnoreSupplier(r.nome)} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--color-danger)', color: 'white', border: 'none', padding: '0.25rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }} title={`Ignorar permanentemente fornecedor: ${r.nome}`}><FilterX size={12} /> Ignorar Sempre</button>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            )}
-
-                            {ddaPreview.divergentRecords.length > 0 && (
-                                <div className="card" style={{ marginBottom: '2rem', border: '1px solid var(--color-warning)' }}>
-                                    <h4><AlertTriangle size={16} color="var(--color-warning)" /> Divergências Encontradas</h4>
-                                    <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '1rem' }}>Valores ou datas próximos, mas com diferenças em relação ao banco de dados.</p>
-                                    <div className="table-container">
-                                        <table>
-                                            <thead>
-                                                <tr>
-                                                    <th>Detalhes DDA</th>
-                                                    <th>Detalhes Banco de Dados</th>
-                                                    <th style={{ textAlign: 'right' }}>Ações</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {ddaPreview.divergentRecords.map((r, i) => (
-                                                    <tr key={`div-${i}`}>
-                                                        <td>
-                                                            <strong style={{ display: 'block' }}>{r.vencimento} - {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(r.valor)}</strong>
-                                                            <span style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>{r.nome}</span>
-                                                        </td>
-                                                        <td style={{ opacity: 0.7 }}>
-                                                            <strong style={{ display: 'block' }}>{parseDateString(r.baseMatch.vencimento).split('-').reverse().join('/')} - {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(r.baseMatch.valor)}</strong>
-                                                            <span style={{ fontSize: '0.85em' }}>{r.baseMatch.nome}</span>
-                                                        </td>
-                                                        <td style={{ textAlign: 'right' }}>
-                                                            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center' }}>
-                                                                {r.action !== 'insert' ? (
-                                                                    <button onClick={() => handleDDAAction(r._id, 'insert', 'divergentRecords')} style={{ background: 'var(--color-warning)', color: 'black', border: 'none', padding: '0.25rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}>Substituir (Aceitar DDA)</button>
-                                                                ) : (
-                                                                    <button onClick={() => handleDDAAction(r._id, 'pending', 'divergentRecords')} style={{ background: 'var(--color-success)', color: 'white', border: 'none', padding: '0.25rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}><CheckCircle2 size={12} /> Substituído</button>
-                                                                )}
-                                                                <button onClick={() => handleDDAAction(r._id, 'unlink', 'divergentRecords')} style={{ background: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)', padding: '0.25rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }} title="Remover vinculo e tratar como Novo DDA">Não é este boleto (Desvincular)</button>
-                                                                <button onClick={() => handleDDAAction(r._id, 'delete', 'divergentRecords')} style={{ background: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-danger)', padding: '0.25rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}>Ignorar Boleto</button>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            )}
-
-                            {ddaPreview.exactRecords.length > 0 && (
-                                <div className="card" style={{ opacity: 0.7 }}>
-                                    <h4><CheckCircle2 size={16} color="var(--color-success)" /> Já Conciliados</h4>
-                                    <div className="table-container" style={{ marginTop: '1rem' }}>
-                                        <table>
-                                            <thead>
-                                                <tr>
-                                                    <th>Data</th>
-                                                    <th>Fornecedor</th>
-                                                    <th>Valor</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {ddaPreview.exactRecords.map((r, i) => (
-                                                    <tr key={`exact-${i}`}>
-                                                        <td className="date-cell">{r.vencimento}</td>
-                                                        <td>{r.nome}</td>
-                                                        <td className="value-cell">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(r.valor)}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
-                                <button
-                                    onClick={() => setDdaPreview(null)}
-                                    style={{ background: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)', padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer' }}
-                                >
-                                    Carregar Outro Arquivo DDA
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                    </div>
+                    <ImportacaoGeral onImportSuccess={() => {
+                        fetchPayments();
+                        setActiveTab('dashboard');
+                    }} />
+                    <ImportacaoDDA 
+                        baseData={baseData} 
+                        onImportSuccess={() => {
+                            fetchPayments();
+                            setActiveTab('dashboard');
+                        }} 
+                    />
+                    <ImportacaoExtras 
+                        onImportSuccess={() => {
+                            fetchPayments();
+                            setActiveTab('dashboard');
+                        }} 
+                    />
                 </div>
             )}
 
+            {/* --- CARDS TAB --- */}
+            {activeTab === 'cards' && (() => {
+                const CARD_CONFIG = [
+                    { key: 'CX_BLACK_MAURO',    label: 'Caixa Black (Mauro)',   color: '#f97316' },
+                    { key: 'ELO_NANQUIM_MAURO', label: 'Elo Nanquim (Mauro)',   color: '#3b82f6' },
+                    { key: 'CX_BLACK_JR',       label: 'Caixa Black (Jr)',      color: '#8b5cf6' },
+                    { key: 'ELO_NANQUIM_JR',    label: 'Elo Nanquim (Jr)',      color: '#10b981' },
+                ];
+
+                // Group transactions by card
+                const cardGroups = { CX_BLACK_MAURO: [], ELO_NANQUIM_MAURO: [], CX_BLACK_JR: [], ELO_NANQUIM_JR: [] };
+                filteredData.forEach(item => {
+                    const card = identifyCard(item.documento);
+                    if (card && cardGroups[card]) {
+                        cardGroups[card].push(item);
+                    }
+                });
+
+                const cardSums = {};
+                CARD_CONFIG.forEach(c => {
+                    cardSums[c.key] = cardGroups[c.key].reduce((acc, item) => acc + (item.valor || 0), 0);
+                });
+
+                const fmt = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+                const totalCards = Object.values(cardSums).reduce((a, b) => a + b, 0);
+                const hasAnyTransaction = Object.values(cardGroups).some(g => g.length > 0);
+
+                return (
+                    <div style={{ marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+
+                        {/* Summary Cards */}
+                        <div className="stats-grid">
+                            {CARD_CONFIG.map(cfg => (
+                                <div key={cfg.key} className="card stat-card" style={{ borderLeft: `4px solid ${cfg.color}` }}>
+                                    <div className="stat-header">
+                                        <span className="stat-title" style={{ color: 'var(--color-text-base)' }}>{cfg.label}</span>
+                                        <CreditCard size={18} color={cfg.color} />
+                                    </div>
+                                    <div className="stat-value" style={{ color: 'var(--color-text-base)' }}>{fmt(cardSums[cfg.key])}</div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
+                                        {cardGroups[cfg.key].length} transaç{cardGroups[cfg.key].length === 1 ? 'ão' : 'ões'}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Total consolidado */}
+                        {hasAnyTransaction && (
+                            <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem', background: 'var(--color-accent-subtle)', border: '1px solid var(--color-accent)' }}>
+                                <span style={{ fontWeight: 600, color: 'var(--color-text-base)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <CreditCard size={18} />
+                                    Total Geral — Cartões de Crédito
+                                </span>
+                                <span style={{ fontWeight: 700, fontSize: '1.25rem', color: 'var(--color-accent)' }}>{fmt(totalCards)}</span>
+                            </div>
+                        )}
+
+                        {/* Transactions per card */}
+                        {!hasAnyTransaction ? (
+                            <div className="card">
+                                <div className="empty-state">
+                                    <CreditCard size={48} style={{ opacity: 0.2 }} />
+                                    <p>Nenhuma transação de cartão encontrada no período filtrado.<br/>
+                                    <span style={{ fontSize: '0.85rem' }}>Verifique o campo "Documento" nos registros — ele deve conter o nome do cartão (ex: "Caixa Black Mauro").</span>
+                                    </p>
+                                </div>
+                            </div>
+                        ) : (
+                            CARD_CONFIG.map(cfg => {
+                                const items = cardGroups[cfg.key];
+                                if (items.length === 0) return null;
+                                const groupTotal = cardSums[cfg.key];
+                                return (
+                                    <div key={cfg.key} className="card" style={{ borderTop: `3px solid ${cfg.color}` }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                                            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem', margin: 0 }}>
+                                                <CreditCard size={20} color={cfg.color} />
+                                                {cfg.label}
+                                            </h3>
+                                            <span style={{ fontWeight: 700, fontSize: '1rem', color: cfg.color }}>
+                                                Total: {fmt(groupTotal)}
+                                            </span>
+                                        </div>
+                                        <div className="table-container">
+                                            <table>
+                                                <thead>
+                                                    <tr>
+                                                        <th>Vencimento</th>
+                                                        <th>Documento</th>
+                                                        <th>Fornecedor</th>
+                                                        <th>Descrição</th>
+                                                        <th className="th-right">Valor</th>
+                                                        <th>Observações</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {items.map((item, idx) => (
+                                                        <tr key={idx}>
+                                                            <td className="date-cell">{item.vencimento}</td>
+                                                            <td style={{ fontWeight: 600, color: 'var(--color-text-base)', fontSize: '0.8rem' }}>{item.documento || '--'}</td>
+                                                            <td>{item.nome}</td>
+                                                            <td style={{ fontSize: '0.875rem' }}>{item.descricao}</td>
+                                                            <td className="value-cell">{item.valor_fmt}</td>
+                                                            <td style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{item.observacao}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                                <tfoot>
+                                                    <tr style={{ fontWeight: 700, background: 'var(--color-bg-elevated)' }}>
+                                                        <td colSpan={4} style={{ padding: '0.75rem 1rem', textAlign: 'right', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+                                                            Subtotal ({items.length} lançamento{items.length !== 1 ? 's' : ''})
+                                                        </td>
+                                                        <td className="value-cell" style={{ color: cfg.color }}>{fmt(groupTotal)}</td>
+                                                        <td></td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                );
+            })()}
+
+            {/* --- CARDS TAB, RENEGOTIATION IA & IMPORT TAB ARE ABOVE --- */}
+            {activeTab === 'renegotiation' && (
+                <RenegotiationPlanner data={filteredData} allData={baseData} />
+            )}
 
         </div>
     );

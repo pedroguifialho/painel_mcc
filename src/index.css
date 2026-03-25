@@ -42,25 +42,26 @@
 .light-theme {
   --color-bg-base: hsl(220, 30%, 97%);
   --color-bg-surface: hsl(0, 0%, 100%);
-  --color-bg-elevated: hsl(220, 20%, 94%);
+  --color-bg-elevated: hsl(220, 20%, 92%);
 
-  --color-border: hsl(220, 15%, 88%);
-  --color-border-hover: hsl(220, 20%, 80%);
+  --color-border: hsl(220, 15%, 85%);
+  --color-border-hover: hsl(220, 20%, 75%);
 
-  --color-text-base: hsl(220, 45%, 15%);
-  --color-text-muted: hsl(220, 15%, 45%);
+  --color-text-base: hsl(220, 45%, 12%);
+  --color-text-muted: hsl(220, 15%, 40%);
 
-  --color-accent: hsl(25, 95%, 48%);
-  --color-accent-hover: hsl(25, 95%, 40%);
-  --color-accent-subtle: hsla(25, 95%, 50%, 0.08);
+  /* Escurecido para melhor contraste em fundos claros (Texto branco sobre Laranja) */
+  --color-accent: hsl(25, 95%, 42%);
+  --color-accent-hover: hsl(25, 95%, 35%);
+  --color-accent-subtle: hsla(25, 95%, 42%, 0.12);
 
   --color-grid: hsl(220, 15%, 90%);
-  --color-tooltip: hsl(0, 0%, 100%);
+  --color-tooltip: hsl(220, 45%, 15%);
 
   color-scheme: light;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.15);
 }
 
 body {
@@ -197,21 +198,25 @@ h1 {
 .filters-bar {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
-  margin-bottom: 0.5rem;
+  gap: 1.25rem;
 }
 
-.inputs-row {
+.inputs-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 1.5rem;
-  align-items: flex-end;
+  grid-template-columns: repeat(1, 1fr);
+  gap: 1.25rem;
   width: 100%;
 }
 
-@media (min-width: 1200px) {
-  .inputs-row {
-    grid-template-columns: 2fr 1.2fr 1.4fr 1.4fr auto;
+@media (min-width: 640px) {
+  .inputs-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .inputs-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 
@@ -229,8 +234,70 @@ h1 {
   flex-direction: column;
   gap: 0.5rem;
   width: 100%;
-  min-width: 0;
-  /* Prevents overflow inside grid */
+}
+
+/* Estilos para o Widget de Melhores Dias integrado ao grid */
+.best-days-container {
+  grid-column: 1 / -1;
+  background-color: hsla(25, 95%, 55%, 0.05);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+@media (min-width: 1024px) {
+  .best-days-container {
+    grid-column: span 3;
+  }
+}
+
+.best-days-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.best-days-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+.best-day-card {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.75rem 0.5rem;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.best-day-card:hover {
+  border-color: var(--color-accent);
+  transform: translateY(-2px);
+}
+
+.best-day-date {
+  font-size: 1.125rem;
+  font-weight: 800;
+  color: var(--color-accent);
+  display: block;
+}
+
+.best-day-label {
+  font-size: 0.7rem;
+  color: var(--color-success);
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .input-group input,
@@ -287,6 +354,133 @@ input:focus,
 select:focus {
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px var(--color-accent-subtle);
+}
+
+/* ===== BUTTONS SYSTEM ===== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid transparent;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn-primary {
+  background-color: var(--color-accent);
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-accent-hover);
+  box-shadow: 0 4px 12px hsla(25, 95%, 55%, 0.3);
+}
+
+.btn-secondary {
+  background-color: var(--color-bg-elevated);
+  color: var(--color-text-base);
+  border: 1px solid var(--color-border);
+}
+
+.btn-secondary:hover {
+  background-color: var(--color-border);
+  border-color: var(--color-border-hover);
+}
+
+.btn-outline {
+  background-color: transparent;
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+}
+
+.btn-outline:hover {
+  background-color: var(--color-accent-subtle);
+  border-color: var(--color-accent-hover);
+}
+
+.btn-danger {
+  background-color: var(--color-danger);
+  color: white;
+  border: 1px solid var(--color-danger);
+}
+
+.btn-danger:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 4px 12px hsla(0, 84%, 60%, 0.3);
+}
+
+.btn-ghost {
+  background-color: transparent;
+  color: var(--color-text-muted);
+}
+
+.btn-ghost:hover {
+  background-color: var(--color-bg-elevated);
+  color: var(--color-text-base);
+}
+
+/* Button with Orange specific intent */
+.btn-warning {
+  background-color: #d97706; /* Amber-600 */
+  color: white;
+  border: 1px solid #b45309;
+}
+
+.btn-warning:hover {
+  background-color: #b45309;
+  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3);
+}
+
+/* Action Btn (Specific for filters) */
+.action-btn {
+  background-color: var(--color-bg-elevated);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+  background-color: var(--color-border);
+  color: var(--color-text-base);
+}
+
+/* Themes Overrides */
+.light-theme .btn-secondary {
+  background-color: white;
+  color: var(--color-text-base);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.light-theme .btn-secondary:hover {
+  background-color: var(--color-bg-elevated);
+  border-color: var(--color-border-hover);
+}
+
+.light-theme .btn-warning {
+  background-color: #c2410c; /* Escurecido p/ acessibilidade */
+  border-color: #9a3412;
+}
+
+.light-theme .btn-ghost:hover {
+  background-color: var(--color-accent-subtle);
+  color: var(--color-accent);
 }
 
 .light-theme input,
