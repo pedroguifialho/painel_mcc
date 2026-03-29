@@ -1,22 +1,12 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { parseCurrency, normalizeText } from '../lib/utils';
+import { BATCH_SIZE, HEADER_KEYWORDS } from '../constants';
 import { UploadCloud, Loader2, FileBarChart, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 const ImportacaoGeral = ({ dbDataCount, onImportSuccess }) => {
     const [isReseting, setIsReseting] = useState(false);
-
-    const parseCurrency = (valStr) => {
-        if (typeof valStr === 'number') return valStr;
-        if (!valStr) return 0;
-        let str = String(valStr).replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
-        return parseFloat(str) || 0;
-    };
-
-    const normalizeText = (text) => {
-        if (!text) return "";
-        return String(text).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    };
 
     const processData = async (rows, fileName) => {
         try {
@@ -29,7 +19,7 @@ const ImportacaoGeral = ({ dbDataCount, onImportSuccess }) => {
 
             // 1. Localizar Cabeçalho
             let headerIdx = -1;
-            const keywords = ['vencimento', 'valor', 'nome', 'descrição', 'descricao'];
+            const keywords = HEADER_KEYWORDS;
 
             for (let i = 0; i < Math.min(rows.length, 20); i++) {
                 const row = rows[i];
@@ -112,9 +102,8 @@ const ImportacaoGeral = ({ dbDataCount, onImportSuccess }) => {
                 const { error: delError } = await supabase.from('payments').delete().not('id', 'is', null);
                 if (delError) throw delError;
 
-                const batchSize = 500;
-                for (let i = 0; i < newRecords.length; i += batchSize) {
-                    const batch = newRecords.slice(i, i + batchSize);
+                for (let i = 0; i < newRecords.length; i += BATCH_SIZE) {
+                    const batch = newRecords.slice(i, i + BATCH_SIZE);
                     const { error: insError } = await supabase.from('payments').insert(batch);
                     if (insError) throw insError;
                 }

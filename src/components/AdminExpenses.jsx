@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
+import { formatCurrency } from '../lib/utils';
+import { CLASSIFICATIONS, CLASSIFICATION_OPTIONS, ADMIN_EMAIL } from '../constants';
 import ImageUploader from './ImageUploader';
 import ReviewTable from './ReviewTable';
 import { PlusCircle, Filter, Trash2, Edit2, Save, X, Database } from 'lucide-react';
@@ -44,8 +46,7 @@ const AdminExpenses = ({ userEmail }) => {
         if (classFilter) {
             res = res.filter(e => e.classificacao === classFilter);
         } else {
-            const valid = ['COMPRAS', 'OUTROS', 'TERCEIROS', 'URGENTE', 'URGENTES'];
-            res = res.filter(e => e.classificacao && valid.includes(e.classificacao.toUpperCase().trim()));
+            res = res.filter(e => e.classificacao && CLASSIFICATIONS.includes(e.classificacao.toUpperCase().trim()));
         }
         return res;
     }, [expenses, classFilter]);
@@ -95,7 +96,7 @@ const AdminExpenses = ({ userEmail }) => {
         return <ReviewTable initialData={ocrData} onCancel={() => setOcrData(null)} onSuccess={handleOcrSuccess} />;
     }
 
-    if (userEmail !== 'pedro.gui.fialho@gmail.com') {
+    if (userEmail !== ADMIN_EMAIL) {
         return <div className="card text-center" style={{ color: 'var(--color-danger)' }}>Acesso Negado: Apenas gestores autorizados.</div>;
     }
 
@@ -124,11 +125,10 @@ const AdminExpenses = ({ userEmail }) => {
                                 onChange={(e) => setClassFilter(e.target.value)}
                                 style={{ paddingLeft: '2.5rem', cursor: 'pointer' }}
                             >
-                                <option value="">Todas as 4 Classificações</option>
-                                <option value="COMPRAS">COMPRAS</option>
-                                <option value="TERCEIROS">TERCEIROS</option>
-                                <option value="URGENTE">URGENTE / URGENTES</option>
-                                <option value="OUTROS">OUTROS</option>
+                                <option value="">Todas as Classificações</option>
+                                {CLASSIFICATION_OPTIONS.map(c => (
+                                    <option key={c} value={c}>{c}</option>
+                                ))}
                             </select>
                         </div>
                     </div>
@@ -148,10 +148,9 @@ const AdminExpenses = ({ userEmail }) => {
                             <div className="input-group">
                                 <label>Classificação *</label>
                                 <select value={formData.classificacao} onChange={e => setFormData({...formData, classificacao: e.target.value})} required>
-                                    <option value="COMPRAS">COMPRAS</option>
-                                    <option value="TERCEIROS">TERCEIROS</option>
-                                    <option value="URGENTE">URGENTE</option>
-                                    <option value="OUTROS">OUTROS</option>
+                                    {CLASSIFICATION_OPTIONS.map(c => (
+                                        <option key={c} value={c}>{c}</option>
+                                    ))}
                                 </select>
                             </div>
                             <div className="input-group">
@@ -213,7 +212,7 @@ const AdminExpenses = ({ userEmail }) => {
                                         <strong style={{ display: 'block' }}>{item.descricao}</strong>
                                         <span style={{ color: 'var(--color-text-muted)' }}>{item.observacao}</span>
                                     </td>
-                                    <td className="value-cell">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.valor)}</td>
+                                    <td className="value-cell">{formatCurrency(item.valor)}</td>
                                     <td style={{ textAlign: 'center' }}>
                                         <button onClick={() => handleEdit(item)} title="Editar" style={{ background: 'none', border: 'none', color: 'var(--color-accent)', cursor: 'pointer', margin: '0 0.5rem' }}><Edit2 size={18} /></button>
                                         <button onClick={() => handleDelete(item.id)} title="Excluir" style={{ background: 'none', border: 'none', color: 'var(--color-danger)', cursor: 'pointer' }}><Trash2 size={18} /></button>

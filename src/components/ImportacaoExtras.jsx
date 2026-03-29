@@ -1,24 +1,8 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { parseCurrency, formatExcelDate } from '../lib/utils';
 import { UploadCloud, CheckCircle2, Save, X, Edit2, Loader2, ListPlus } from 'lucide-react';
 import * as XLSX from 'xlsx';
-
-const parseCurrency = (valStr) => {
-    if (!valStr) return 0;
-    if (typeof valStr === 'number') return valStr;
-    let str = String(valStr).replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
-    return parseFloat(str) || 0;
-};
-
-// Converts Excel serial date to DD/MM/YYYY string if needed, or simply formatting strings
-const formatExcelDate = (excelDate) => {
-    if (!excelDate) return '';
-    if (typeof excelDate === 'number') {
-        const d = new Date(Math.round((excelDate - 25569) * 86400 * 1000));
-        return d.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
-    }
-    return String(excelDate).trim();
-};
 
 const ImportacaoExtras = ({ onImportSuccess }) => {
     const [pastedData, setPastedData] = useState('');

@@ -1,5 +1,9 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { supabase } from './lib/supabase';
+import { formatCurrency, identifyCard } from './lib/utils';
+import { CARDS, CHART_COLORS } from './constants';
+import { usePayments } from './hooks/usePayments';
+import { useFilters } from './hooks/useFilters';
 import Login from './components/Login';
 import AuditHistory from './components/AuditHistory';
 import RenegotiationPlanner from './components/RenegotiationPlanner';
@@ -7,8 +11,6 @@ import PaymentLists from './components/PaymentLists';
 import ImportacaoGeral from './components/ImportacaoGeral';
 import ImportacaoDDA from './components/ImportacaoDDA';
 import ImportacaoExtras from './components/ImportacaoExtras';
-// import nativeData from './data/data.json'; // Deprecated for Supabase
-// import ddaData from './data/dda-imported.json'; // Deprecated for Supabase
 import {
     BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
     Cell, CartesianGrid, Legend
@@ -44,46 +46,10 @@ import {
     ListChecks
 } from 'lucide-react';
 
-// Utility to parse DD/MM/YYYY to YYYY-MM-DD for easier comparison
-const parseDateString = (dateStr) => {
-    if (!dateStr) return '';
-    const parts = dateStr.split('/');
-    if (parts.length !== 3) return '';
-    return `${parts[2]}-${parts[1]}-${parts[0]}`; // YYYY-MM-DD
-};
-
-// Utility to parse imported strings to number
-const parseCurrency = (valStr) => {
-    if (!valStr) return 0;
-    let str = String(valStr).replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
-    return parseFloat(str) || 0;
-};
-
-const identifyCard = (doc) => {
-    if (!doc) return null;
-    const s = String(doc).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    
-    if (s.includes('caixa black mauro') || s.includes('cx black mauro')) return 'CX_BLACK_MAURO';
-    if (s.includes('elo nanquim mauro')) return 'ELO_NANQUIM_MAURO';
-    if (s.includes('caixa black junior') || s.includes('caixa black jr') || s.includes('cx black junior') || s.includes('cx black jr')) return 'CX_BLACK_JR';
-    if (s.includes('elo nanquim junior') || s.includes('elo nanquim jr')) return 'ELO_NANQUIM_JR';
-    
-    return null;
-};
-
 const App = () => {
     const [user, setUser] = useState(null);
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [activeTab, setActiveTab] = useState('dashboard');
-    const [searchTerm, setSearchTerm] = useState('');
-    const [supplierFilter, setSupplierFilter] = useState('');
-
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [showOverdueOnly, setShowOverdueOnly] = useState(false);
-    const [classFilter, setClassFilter] = useState('');
-    const [cardFilter, setCardFilter] = useState('');
-
 
     // --- THEME STATE ---
     const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -93,7 +59,6 @@ const App = () => {
 
     useEffect(() => {
         localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
-        // Apply theme to body so backgrounds outside .container are also themed
         if (isDarkMode) {
             document.body.classList.remove('light-theme');
         } else {
@@ -101,10 +66,7 @@ const App = () => {
         }
     }, [isDarkMode]);
 
-
-
     useEffect(() => {
-        // Check current session
         supabase.auth.getSession().then(({ data: { session } }) => {
             setUser(session?.user ?? null);
         });
@@ -121,94 +83,20 @@ const App = () => {
         setUser(null);
     };
 
-    const [localDdaData, setLocalDdaData] = useState([]);
-    const [dbData, setDbData] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
-
-
-    // 1. Fetch initial data from Supabase
-    const fetchPayments = useCallback(async () => {
-        setIsLoading(true);
-        const { data, error } = await supabase
-            .from('payments')
-            .select('*')
-            .order('vencimento', { ascending: true });
-
-        if (error) {
-            console.error('Error fetching payments:', error);
-        } else {
-            // Map DB fields to match current logic if needed
-            const mapped = (data || []).map(item => ({
-                ...item,
-                valor: parseFloat(item.valor)
-            }));
-            setDbData(mapped);
-        }
-        setIsLoading(false);
-    }, []);
-
-    useEffect(() => {
-        fetchPayments();
-
-        // 2. Setup Realtime Subscription
-        const channel = supabase
-            .channel('public:payments')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => {
-                fetchPayments(); // Refresh on any change
-            })
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, [fetchPayments]);
-
-    // 3. Combine initial DB data and transient DDA Data
-    const baseData = useMemo(() => {
-        // Flag source
-        const mappedDb = dbData.map(d => ({ ...d, source: d.source || 'native' }));
-        const mappedLocalDda = localDdaData.map(d => ({ ...d, source: 'dda' }));
-
-        const combined = [...mappedDb, ...mappedLocalDda];
-
-        return combined.map(item => ({
-            ...item,
-            data_iso: parseDateString(item.vencimento),
-            valor_fmt: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.valor),
-        })).sort((a, b) => (a.data_iso || '').localeCompare(b.data_iso || ''));
-    }, [dbData, localDdaData]);
-
-    // 2. Apply global filters (Period, Search, Supplier) (For Dashboard/Reports only)
-    const filteredData = useMemo(() => {
-        if (activeTab === 'import') return []; // Don't compute mostly if not needed
-        return baseData.filter(item => {
-            const textMatches =
-                (item.descricao || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (item.nome || '').toLowerCase().includes(searchTerm.toLowerCase());
-
-            const supplierMatches = supplierFilter === '' || item.nome === supplierFilter;
-            const afterStart = startDate === '' || item.data_iso >= startDate;
-            const beforeEnd = endDate === '' || item.data_iso <= endDate;
-
-            let isOverdue = true;
-            if (showOverdueOnly) {
-                const todayIso = new Date().toISOString().split('T')[0];
-                isOverdue = item.data_iso < todayIso;
-            }
-
-            const classMatches = classFilter === '' || 
-                (classFilter === 'URGENTE' ? (item.classificacao === 'URGENTE' || item.classificacao === 'URGENTES') : item.classificacao === classFilter);
-
-            const cardType = identifyCard(item.documento);
-            const cardMatches = cardFilter === '' || cardType === cardFilter;
-
-            return textMatches && supplierMatches && afterStart && beforeEnd && isOverdue && classMatches && cardMatches;
-        });
-    }, [baseData, searchTerm, supplierFilter, startDate, endDate, showOverdueOnly, activeTab, classFilter, cardFilter]);
-
-    const uniqueSuppliers = useMemo(() => {
-        return [...new Set(baseData.map(item => item.nome))].sort();
-    }, [baseData]);
+    // --- HOOKS DE DADOS E FILTROS ---
+    const { dbData, localDdaData, setLocalDdaData, baseData, isLoading, fetchPayments } = usePayments();
+    const {
+        searchTerm, setSearchTerm,
+        supplierFilter, setSupplierFilter,
+        startDate, setStartDate,
+        endDate, setEndDate,
+        showOverdueOnly, setShowOverdueOnly,
+        classFilter, setClassFilter,
+        cardFilter, setCardFilter,
+        filteredData,
+        uniqueSuppliers,
+        clearFilters,
+    } = useFilters(baseData, activeTab);
 
     // 3. Calculating Aggregated Stats
     const stats = useMemo(() => {
@@ -298,12 +186,7 @@ const App = () => {
         return result;
     }, [baseData]);
 
-    const COLORS = [
-        '#f97316', '#3b82f6', '#8b5cf6', '#10b981', '#ef4444',
-        '#06b6d4', '#ec4899', '#f59e0b', '#14b8a6', '#6366f1',
-        '#84cc16', '#e11d48', '#0ea5e9', '#a855f7', '#22c55e',
-        '#d946ef', '#f43f5e', '#0891b2', '#7c3aed', '#eab308'
-    ];
+    const COLORS = CHART_COLORS;
     const CHART_THEME = {
         textColor: 'var(--color-text-muted)',
         gridColor: 'var(--color-grid)',
@@ -311,16 +194,6 @@ const App = () => {
         tooltipBorder: 'var(--color-border)'
     };
     const chartTextColor = isDarkMode ? '#94a3b8' : '#64748b'; // Fallback for some recharts props if var() fails
-
-    const clearFilters = () => {
-        setSearchTerm('');
-        setSupplierFilter('');
-        setStartDate('');
-        setEndDate('');
-        setClassFilter('');
-        setCardFilter('');
-        setShowOverdueOnly(false);
-    };
 
     // --- SELECTION & DELETE LOGIC ---
     const visibleSelectedItems = useMemo(() => {
@@ -463,7 +336,7 @@ const App = () => {
 
         // --- Top summary section ---
         const totalGeral = filteredData.reduce((acc, curr) => acc + curr.valor, 0);
-        const fmt = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+        const fmt = formatCurrency;
 
         let yPos = 44;
         doc.setFontSize(11);
@@ -592,7 +465,7 @@ const App = () => {
 
         const sortedSuppliers = Object.keys(groupedData).sort((a, b) => a.localeCompare(b));
         const totalGeral = filteredData.reduce((acc, curr) => acc + curr.valor, 0);
-        const fmt = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+        const fmt = formatCurrency;
 
         let yPos = 46;
 
@@ -825,10 +698,9 @@ const App = () => {
                                 <label>Cartão de Crédito</label>
                                 <select value={cardFilter} onChange={(e) => setCardFilter(e.target.value)}>
                                     <option value="">Todos os Cartões</option>
-                                    <option value="CX_BLACK_MAURO">Caixa Black Mauro</option>
-                                    <option value="ELO_NANQUIM_MAURO">Elo Nanquim Mauro</option>
-                                    <option value="CX_BLACK_JR">Caixa Black Jr</option>
-                                    <option value="ELO_NANQUIM_JR">Elo Nanquim Jr</option>
+                                    {CARDS.map(c => (
+                                        <option key={c.key} value={c.key}>{c.label}</option>
+                                    ))}
                                 </select>
                             </div>
 
@@ -935,7 +807,7 @@ const App = () => {
                                 <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', background: 'transparent', gap: '1rem' }}>
                                     <div style={{ padding: '1rem', background: 'var(--color-bg-base)', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
                                         <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--color-text-muted)', fontWeight: 600, marginBottom: '0.25rem' }}>Montante em Atraso</div>
-                                        <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#f87171' }}>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.total)}</div>
+                                        <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#f87171' }}>{formatCurrency(stats.total)}</div>
                                     </div>
                                     <div style={{ padding: '1rem', background: 'var(--color-bg-base)', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
                                         <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--color-text-muted)', fontWeight: 600, marginBottom: '0.25rem' }}>Volume de Títulos</div>
@@ -963,7 +835,7 @@ const App = () => {
                                 <div className="stat-label">Total Filtrado</div>
                             </div>
                             <div className="stat-value highlight">
-                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.total)}
+                                {formatCurrency(stats.total)}
                             </div>
                         </div>
 
@@ -992,7 +864,7 @@ const App = () => {
                                 <div>
                                     <h3 style={{ margin: 0, color: 'var(--color-text-base)', fontSize: '1.1rem' }}>{visibleSelectedItems.length} {visibleSelectedItems.length === 1 ? 'item selecionado' : 'itens selecionados'}</h3>
                                     <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
-                                        Soma total: <strong style={{color: 'var(--color-accent)', fontSize: '1.1rem'}}>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(selectedItemsSum)}</strong>
+                                        Soma total: <strong style={{color: 'var(--color-accent)', fontSize: '1.1rem'}}>{formatCurrency(selectedItemsSum)}</strong>
                                     </p>
                                 </div>
                             </div>
@@ -1109,7 +981,7 @@ const App = () => {
                                                 color: 'var(--color-text-base)',
                                                 boxShadow: 'var(--shadow-lg)'
                                             }}
-                                            formatter={(value) => [new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value), 'Total do Dia']}
+                                            formatter={(value) => [formatCurrency(value), 'Total do Dia']}
                                             labelFormatter={(label, payload) => payload?.[0]?.payload?.fullDate || label}
                                             itemStyle={{ color: 'var(--color-accent)' }}
                                         />
@@ -1142,7 +1014,7 @@ const App = () => {
                                                 color: 'var(--color-text-base)',
                                                 boxShadow: 'var(--shadow-lg)'
                                             }}
-                                            formatter={(value) => [new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value), 'Total']}
+                                            formatter={(value) => [formatCurrency(value), 'Total']}
                                             itemStyle={{ color: 'var(--color-accent)' }}
                                         />
                                         <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={40}>
@@ -1211,7 +1083,7 @@ const App = () => {
                     cardSums[c.key] = cardGroups[c.key].reduce((acc, item) => acc + (item.valor || 0), 0);
                 });
 
-                const fmt = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+                const fmt = formatCurrency;
                 const totalCards = Object.values(cardSums).reduce((a, b) => a + b, 0);
                 const hasAnyTransaction = Object.values(cardGroups).some(g => g.length > 0);
 
