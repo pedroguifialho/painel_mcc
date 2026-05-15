@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
-import { parseDateString, formatCurrency } from '../lib/utils';
+import { parseDateString, formatCurrency, parseCurrency } from '../lib/utils';
 
 /**
  * Hook para gerenciar o estado e as operações de pagamentos via Supabase.
@@ -32,7 +32,7 @@ export const usePayments = () => {
         } else {
             const mapped = (data || []).map(item => ({
                 ...item,
-                valor: parseFloat(item.valor),
+                valor: parseCurrency(item.valor),
             }));
             setDbData(mapped);
         }
@@ -55,7 +55,7 @@ export const usePayments = () => {
     }, [fetchPayments]);
 
     // Combina dados do banco e DDA local, enriquecendo com campos derivados
-    const baseData = (() => {
+    const baseData = useMemo(() => {
         const mappedDb = dbData.map(d => ({ ...d, source: d.source || 'native' }));
         const mappedLocalDda = localDdaData.map(d => ({ ...d, source: 'dda' }));
         const combined = [...mappedDb, ...mappedLocalDda];
@@ -67,7 +67,7 @@ export const usePayments = () => {
                 valor_fmt: formatCurrency(item.valor),
             }))
             .sort((a, b) => (a.data_iso || '').localeCompare(b.data_iso || ''));
-    })();
+    }, [dbData, localDdaData]);
 
     return {
         dbData,

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { MessageCircle, X, Send, Settings, Key, Trash2, Bot, User } from 'lucide-react';
+import { formatCurrency } from '../lib/utils';
 
 const SYSTEM_PROMPT = `Você é um assistente financeiro especializado em análise de contas a pagar. Seu nome é "Assistente MCC".
 Você responde APENAS perguntas relacionadas aos dados financeiros fornecidos. Se perguntarem algo fora do escopo dos dados, diga educadamente que só pode ajudar com questões sobre os dados financeiros.
@@ -42,11 +43,9 @@ function buildDataSummary(data) {
         }
     });
 
-    const fmtBRL = (v) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-
     const allSuppliers = Object.entries(supplierTotals)
         .sort((a, b) => b[1] - a[1])
-        .map(([name, val]) => '  - ' + name + ': R$ ' + fmtBRL(val) + ' (' + supplierCounts[name] + ' reg.)')
+        .map(([name, val]) => '  - ' + name + ': ' + formatCurrency(val) + ' (' + supplierCounts[name] + ' reg.)')
         .join('\n');
 
     const monthlyBreakdown = Object.entries(monthlyTotals)
@@ -55,13 +54,13 @@ function buildDataSummary(data) {
             const [mB, yB] = b[0].split('/');
             return (yA + '-' + mA).localeCompare(yB + '-' + mB);
         })
-        .map(([month, val]) => '  - ' + month + ': R$ ' + fmtBRL(val))
+        .map(([month, val]) => '  - ' + month + ': ' + formatCurrency(val))
         .join('\n');
 
     const topOverdue = overdueRecords
         .sort((a, b) => b.valor - a.valor)
         .slice(0, 10)
-        .map(d => '  - Venc: ' + d.vencimento + ' | ' + d.nome + ' | R$ ' + fmtBRL(d.valor || 0))
+        .map(d => '  - Venc: ' + d.vencimento + ' | ' + d.nome + ' | ' + formatCurrency(d.valor || 0))
         .join('\n');
 
     const totalSuppliers = Object.keys(supplierTotals).length;
@@ -69,10 +68,10 @@ function buildDataSummary(data) {
 
     return 'RESUMO DOS DADOS FINANCEIROS (Contas a Pagar):\n' +
         '- Total de registros: ' + count + '\n' +
-        '- Valor total: R$ ' + fmtBRL(total) + '\n' +
-        '- Valor medio: R$ ' + fmtBRL(avgVal) + '\n' +
+        '- Valor total: ' + formatCurrency(total) + '\n' +
+        '- Valor medio: ' + formatCurrency(avgVal) + '\n' +
         '- Fornecedores distintos: ' + totalSuppliers + '\n' +
-        '- Contas vencidas: ' + overdueCount + ' registros = R$ ' + fmtBRL(overdueTotal) + '\n\n' +
+        '- Contas vencidas: ' + overdueCount + ' registros = ' + formatCurrency(overdueTotal) + '\n\n' +
         'TODOS OS FORNECEDORES:\n' + allSuppliers + '\n\n' +
         'TOTAIS POR MES:\n' + monthlyBreakdown + '\n\n' +
         'MAIORES CONTAS ATRASADAS:\n' + (topOverdue || '  Nenhuma.') + '\n\n' +

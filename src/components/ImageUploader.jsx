@@ -79,7 +79,7 @@ const ImageUploader = ({ onExtractedData }) => {
             )}
             
             {error && (
-                <div style={{ marginTop: '1rem', padding: '1rem', background: '#fee2e2', color: '#b91c1c', borderRadius: '8px', fontSize: '0.9rem' }}>
+                <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--color-danger-subtle)', color: 'var(--color-danger)', borderRadius: '8px', fontSize: '0.9rem' }}>
                     <strong>Erro de Visão:</strong> {error}
                 </div>
             )}

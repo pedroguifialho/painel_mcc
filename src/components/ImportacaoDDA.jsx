@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { parseDateString, parseCurrency } from '../lib/utils';
+import { parseDateString, parseCurrency, formatCurrency } from '../lib/utils';
 import { UploadCloud, CheckCircle2, AlertCircle, AlertTriangle, FilterX, Save, FileSpreadsheet, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -47,7 +47,7 @@ const ImportacaoDDA = ({ baseData, onImportSuccess }) => {
     };
 
     // Processa dados colados diretamente do Excel (colunas separadas por tab)
-    // Formato esperado: A=Vencimento, B=Beneficiário, C=(ignorado), D=Pagador, E=(ignorado), F=Valor
+    // Formato esperado: A=Vencimento, B=Beneficiário, C=Pagador, D=Valor
     const handlePasteImport = () => {
         if (!pastedData.trim()) return alert('Cole os dados primeiro.');
         setIsProcessingFile(true);
@@ -61,8 +61,8 @@ const ImportacaoDDA = ({ baseData, onImportSuccess }) => {
 
                 const rawVenc = cols[0] ? cols[0].trim() : '';
                 const nome = cols[1] ? cols[1].trim().toUpperCase() : '';
-                const pagador = cols[3] ? cols[3].trim() : '';
-                const rawValor = cols[5] ? cols[5].trim() : '';
+                const pagador = cols[2] ? cols[2].trim() : '';
+                const rawValor = cols[3] ? cols[3].trim() : '';
 
                 if (!rawVenc || rawVenc.toLowerCase().includes('vencimento')) continue;
 
@@ -85,7 +85,7 @@ const ImportacaoDDA = ({ baseData, onImportSuccess }) => {
             }
 
             if (records.length === 0) {
-                alert('Nenhum dado válido encontrado. Verifique se as colunas estão no formato: Vencimento | Beneficiário | - | Pagador | - | Valor');
+                alert('Nenhum dado válido encontrado. Verifique se as colunas estão no formato: Vencimento | Beneficiário | Pagador | Valor');
                 setIsProcessingFile(false);
                 return;
             }
@@ -217,37 +217,44 @@ const ImportacaoDDA = ({ baseData, onImportSuccess }) => {
     };
 
     const compareDDAWithBase = (importedRecords) => {
-        let newRecords = [];
-        let divergentRecords = [];
-        let exactRecords = [];
+        const newRecords = [];
+        const divergentRecords = [];
+        const exactRecords = [];
+
+        // Indexa baseData por nome (minúsculo) — reduz O(n*m) para O(n + m*k)
+        // onde k é a média de itens por fornecedor (tipicamente pequeno).
+        const baseByName = new Map();
+        for (const baseItem of baseData) {
+            const key = (baseItem.nome || '').toLowerCase();
+            if (!baseByName.has(key)) baseByName.set(key, []);
+            baseByName.get(key).push(baseItem);
+        }
+
+        const DAY_MS = 1000 * 60 * 60 * 24;
 
         importedRecords.forEach(record => {
+            const candidates = baseByName.get((record.nome || '').toLowerCase()) || [];
             let matchType = 'new';
             let bestBaseMatch = null;
 
-            for (const baseItem of baseData) {
-                const isSameName = (baseItem.nome || '').toLowerCase() === (record.nome).toLowerCase();
-                const isExactDate = baseItem.data_iso === record.data_iso;
+            for (const baseItem of candidates) {
                 const valueDiff = Math.abs(baseItem.valor - record.valor);
+                const isExactDate = baseItem.data_iso === record.data_iso;
                 const isExactValue = valueDiff < 0.01;
 
-                if (isSameName && isExactDate && isExactValue) {
+                if (isExactDate && isExactValue) {
                     matchType = 'exact';
                     bestBaseMatch = baseItem;
                     break;
                 }
 
-                if (valueDiff <= 5) {
-                    const baseDateObj = new Date(baseItem.data_iso);
-                    const recDateObj = new Date(record.data_iso);
-                    const diffTime = Math.abs(recDateObj - baseDateObj);
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-                    if (diffDays <= 3) {
-                        if (matchType !== 'exact') {
-                            matchType = 'divergent';
-                            bestBaseMatch = baseItem;
-                        }
+                if (valueDiff <= 5 && baseItem.data_iso && record.data_iso) {
+                    const diffDays = Math.ceil(
+                        Math.abs(new Date(baseItem.data_iso) - new Date(record.data_iso)) / DAY_MS
+                    );
+                    if (diffDays <= 3 && matchType !== 'exact') {
+                        matchType = 'divergent';
+                        bestBaseMatch = baseItem;
                     }
                 }
             }
@@ -386,7 +393,7 @@ const ImportacaoDDA = ({ baseData, onImportSuccess }) => {
                         <h3 style={{ fontSize: '1.1rem', marginBottom: '0.25rem' }}>Colar do Excel</h3>
                         <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginBottom: '0.75rem' }}>
                             Selecione as células no DDA e cole aqui.<br/>
-                            Colunas esperadas: <strong>Vencimento | Beneficiário | — | Pagador | — | Valor</strong>
+                            Colunas esperadas: <strong>Vencimento | Beneficiário | Pagador | Valor</strong>
                         </p>
                         <textarea
                             value={pastedData}
@@ -464,7 +471,7 @@ const ImportacaoDDA = ({ baseData, onImportSuccess }) => {
                                                         {r.observacao}
                                                     </span>
                                                 </td>
-                                                <td className="value-cell">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(r.valor)}</td>
+                                                <td className="value-cell">{formatCurrency(r.valor)}</td>
                                                 <td style={{ textAlign: 'right' }}>
                                                     <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center' }}>
                                                         {r.action !== 'insert' ? (
@@ -501,13 +508,13 @@ const ImportacaoDDA = ({ baseData, onImportSuccess }) => {
                                             <tr key={`div-${i}`}>
                                                 <td>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                                                        <strong style={{ display: 'inline' }}>{r.vencimento} - {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(r.valor)}</strong>
+                                                        <strong style={{ display: 'inline' }}>{r.vencimento} - {formatCurrency(r.valor)}</strong>
                                                         <span style={{ fontSize: '0.7rem', padding: '1px 4px', borderRadius: '3px', background: 'var(--color-primary-subtle)', color: 'var(--color-primary)' }}>{r.observacao}</span>
                                                     </div>
                                                     <span style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>{r.nome}</span>
                                                 </td>
                                                 <td style={{ opacity: 0.7 }}>
-                                                    <strong style={{ display: 'block' }}>{parseDateString(r.baseMatch.vencimento).split('-').reverse().join('/')} - {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(r.baseMatch.valor)}</strong>
+                                                    <strong style={{ display: 'block' }}>{parseDateString(r.baseMatch.vencimento).split('-').reverse().join('/')} - {formatCurrency(r.baseMatch.valor)}</strong>
                                                     <span style={{ fontSize: '0.85em' }}>{r.baseMatch.nome}</span>
                                                 </td>
                                                 <td style={{ textAlign: 'right' }}>
@@ -548,7 +555,7 @@ const ImportacaoDDA = ({ baseData, onImportSuccess }) => {
                                                 <td className="date-cell">{r.vencimento}</td>
                                                 <td>{r.nome}</td>
                                                 <td>{r.observacao}</td>
-                                                <td className="value-cell">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(r.valor)}</td>
+                                                <td className="value-cell">{formatCurrency(r.valor)}</td>
                                             </tr>
                                         ))}
                                     </tbody>

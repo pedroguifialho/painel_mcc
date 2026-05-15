@@ -409,7 +409,7 @@ const RenegotiationPlanner = ({ data, allData }) => {
 
             {/* Error */}
             {error && (
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '1rem 1.25rem', borderRadius: '10px', background: 'hsla(0,84%,60%,0.08)', border: '1px solid hsla(0,84%,60%,0.3)', color: '#f87171' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '1rem 1.25rem', borderRadius: '10px', background: 'var(--color-danger-subtle)', border: '1px solid var(--color-danger)', color: 'var(--color-danger)' }}>
                     <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '0.1rem' }} />
                     <span style={{ fontSize: '0.9rem' }}>{error}</span>
                 </div>
@@ -433,7 +433,7 @@ const RenegotiationPlanner = ({ data, allData }) => {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
                     {/* Success banner */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.85rem 1.25rem', borderRadius: '10px', background: 'hsla(142,71%,45%,0.08)', border: '1px solid hsla(142,71%,45%,0.3)', color: '#34d399' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.85rem 1.25rem', borderRadius: '10px', background: 'var(--color-success-subtle)', border: '1px solid var(--color-success)', color: 'var(--color-success)' }}>
                         <CheckCircle2 size={18} />
                         <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Plano gerado com sucesso a partir de {debitos.length} débitos ({fmt(totalDebitos)})</span>
                     </div>

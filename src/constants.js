@@ -1,12 +1,22 @@
 /**
- * Classificações válidas de lançamentos.
+ * Classificações válidas que podem chegar no banco. URGENTES é tratado como alias de URGENTE.
  */
 export const CLASSIFICATIONS = ['COMPRAS', 'TERCEIROS', 'URGENTE', 'URGENTES', 'OUTROS'];
 
 /**
- * Classificações exibidas nos filtros e formulários (sem duplicatas de urgente).
+ * Classificações exibidas nos filtros e formulários (canônicas).
  */
 export const CLASSIFICATION_OPTIONS = ['COMPRAS', 'TERCEIROS', 'URGENTE', 'OUTROS'];
+
+/**
+ * Normaliza um valor de classificação para a forma canônica.
+ * URGENTES -> URGENTE; demais ficam como estão (uppercase).
+ */
+export const canonicalClassification = (raw) => {
+    const v = String(raw || '').toUpperCase().trim();
+    if (v === 'URGENTES') return 'URGENTE';
+    return v;
+};
 
 /**
  * Cartões de crédito registrados no sistema.

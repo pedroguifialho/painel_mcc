@@ -49,9 +49,9 @@ const ReviewTable = ({ initialData, onCancel, onSuccess }) => {
 
     if (tableData.length === 0) {
         return (
-             <div className="card text-center" style={{ marginTop: '2rem' }}>
+             <div className="card" style={{ marginTop: '2rem', textAlign: 'center' }}>
                  <p className="text-muted">A tabela está vazia. Todos os itens apagados ou IA não captou nada.</p>
-                 <button onClick={onCancel} className="btn-secondary" style={{ marginTop: '1rem' }}>Voltar</button>
+                 <button onClick={onCancel} className="btn btn-secondary" style={{ marginTop: '1rem' }}>Voltar</button>
              </div>
         );
     }
@@ -60,23 +60,23 @@ const ReviewTable = ({ initialData, onCancel, onSuccess }) => {
         <div className="card" style={{ marginTop: '2rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
                 <h3 style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', color: 'var(--color-warning)' }}>
-                    <AlertCircle size={24} />
+                    <AlertCircle size={24} aria-hidden="true" />
                     Revise as colunas capturadas!
                 </h3>
                 <div style={{ display: 'flex', gap: '1rem' }}>
-                    <button onClick={onCancel} className="btn-secondary" disabled={isSaving}>Cancelar</button>
-                    <button onClick={handleConfirmSave} className="action-btn update-btn" disabled={isSaving} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                        <Save size={18} /> {isSaving ? 'Salvando...' : 'Confirmar e Inserir no DB'}
+                    <button onClick={onCancel} className="btn btn-secondary" disabled={isSaving}>Cancelar</button>
+                    <button onClick={handleConfirmSave} className="action-btn update-btn" disabled={isSaving}>
+                        <Save size={18} aria-hidden="true" /> {isSaving ? 'Salvando...' : 'Confirmar e Inserir no DB'}
                     </button>
                 </div>
             </div>
-            
+
             <p className="text-muted" style={{ marginBottom: '1.5rem', fontSize: '0.9rem' }}>
                 A IA pode falhar na interpretação de caracteres difíceis. Altere os valores numéricos com um simples clique nos campos se observar erros (Vírgulas foram convertidas em ponto).
             </p>
 
-            <div style={{ overflowX: 'auto' }}>
-                <table className="data-table">
+            <div className="table-container">
+                <table>
                     <thead>
                         <tr>
                             <th>Classificação</th>
@@ -91,23 +91,23 @@ const ReviewTable = ({ initialData, onCancel, onSuccess }) => {
                         {tableData.map(row => (
                             <tr key={row._tmpId}>
                                 <td>
-                                    <input className="input-with-icon" type="text" value={row.classificacao} onChange={(e) => handleCellChange(row._tmpId, 'classificacao', e.target.value)} style={{ padding: '0.3rem', width: '120px' }} />
+                                    <input type="text" aria-label="Classificação" value={row.classificacao} onChange={(e) => handleCellChange(row._tmpId, 'classificacao', e.target.value)} style={{ padding: '0.3rem', width: '120px' }} />
                                 </td>
                                 <td>
-                                    <input className="input-with-icon" type="text" value={row.vencimento} onChange={(e) => handleCellChange(row._tmpId, 'vencimento', e.target.value)} style={{ padding: '0.3rem', width: '90px' }} />
+                                    <input type="text" aria-label="Vencimento" value={row.vencimento} onChange={(e) => handleCellChange(row._tmpId, 'vencimento', e.target.value)} style={{ padding: '0.3rem', width: '90px' }} />
                                 </td>
                                 <td>
-                                    <input className="input-with-icon" type="text" value={row.nome} onChange={(e) => handleCellChange(row._tmpId, 'nome', e.target.value)} style={{ padding: '0.3rem', width: '100%' }} />
+                                    <input type="text" aria-label="Fornecedor" value={row.nome} onChange={(e) => handleCellChange(row._tmpId, 'nome', e.target.value)} style={{ padding: '0.3rem', width: '100%' }} />
                                 </td>
                                 <td>
-                                    <input className="input-with-icon" type="text" value={row.descricao} onChange={(e) => handleCellChange(row._tmpId, 'descricao', e.target.value)} style={{ padding: '0.3rem', width: '100%' }} />
+                                    <input type="text" aria-label="Descrição" value={row.descricao} onChange={(e) => handleCellChange(row._tmpId, 'descricao', e.target.value)} style={{ padding: '0.3rem', width: '100%' }} />
                                 </td>
                                 <td>
-                                    <input className="input-with-icon" type="number" step="0.01" value={row.valor} onChange={(e) => handleCellChange(row._tmpId, 'valor', e.target.value)} style={{ padding: '0.3rem', width: '100px' }} />
+                                    <input type="number" step="0.01" min="0" aria-label="Valor" value={row.valor} onChange={(e) => handleCellChange(row._tmpId, 'valor', e.target.value)} style={{ padding: '0.3rem', width: '100px' }} />
                                 </td>
                                 <td>
-                                    <button onClick={() => handleDeleteRow(row._tmpId)} title="Apagar linha incorreta" style={{ color: 'var(--color-danger)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '0.2rem' }}>
-                                        <Trash2 size={20} />
+                                    <button onClick={() => handleDeleteRow(row._tmpId)} title="Apagar linha incorreta" aria-label="Apagar linha" className="action-btn-small hover-danger">
+                                        <Trash2 size={20} aria-hidden="true" />
                                     </button>
                                 </td>
                             </tr>

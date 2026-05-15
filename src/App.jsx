@@ -583,54 +583,82 @@ const App = () => {
             </header>
 
             {/* Navigation Tabs */}
-            <nav className="nav-tabs">
+            <nav className="nav-tabs" role="tablist" aria-label="Navegação principal">
                 <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === 'dashboard'}
+                    aria-current={activeTab === 'dashboard' ? 'page' : undefined}
                     className={`nav-tab ${activeTab === 'dashboard' ? 'active' : ''}`}
                     onClick={() => setActiveTab('dashboard')}
                 >
-                    <LayoutDashboard size={18} />
+                    <LayoutDashboard size={18} aria-hidden="true" />
                     Dashboard
                 </button>
                 <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === 'reports'}
+                    aria-current={activeTab === 'reports' ? 'page' : undefined}
                     className={`nav-tab ${activeTab === 'reports' ? 'active' : ''}`}
                     onClick={() => setActiveTab('reports')}
                 >
-                    <FileBarChart size={18} />
+                    <FileBarChart size={18} aria-hidden="true" />
                     Relatórios
                 </button>
                 <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === 'cards'}
+                    aria-current={activeTab === 'cards' ? 'page' : undefined}
                     className={`nav-tab ${activeTab === 'cards' ? 'active' : ''}`}
                     onClick={() => setActiveTab('cards')}
                 >
-                    <CreditCard size={18} />
+                    <CreditCard size={18} aria-hidden="true" />
                     Cartões
                 </button>
                 <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === 'renegotiation'}
+                    aria-current={activeTab === 'renegotiation' ? 'page' : undefined}
                     className={`nav-tab ${activeTab === 'renegotiation' ? 'active' : ''}`}
                     onClick={() => setActiveTab('renegotiation')}
                 >
-                    <Handshake size={18} />
+                    <Handshake size={18} aria-hidden="true" />
                     IA Renegoc.
                 </button>
                 <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === 'payment-lists'}
+                    aria-current={activeTab === 'payment-lists' ? 'page' : undefined}
                     className={`nav-tab ${activeTab === 'payment-lists' ? 'active' : ''}`}
                     onClick={() => setActiveTab('payment-lists')}
                 >
-                    <ListChecks size={18} />
+                    <ListChecks size={18} aria-hidden="true" />
                     Lista de Pagtos
                 </button>
                 <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === 'audit'}
+                    aria-current={activeTab === 'audit' ? 'page' : undefined}
                     className={`nav-tab ${activeTab === 'audit' ? 'active' : ''}`}
                     onClick={() => setActiveTab('audit')}
                 >
-                    <History size={18} />
+                    <History size={18} aria-hidden="true" />
                     Histórico
                 </button>
                 <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === 'import'}
+                    aria-current={activeTab === 'import' ? 'page' : undefined}
                     className={`nav-tab ${activeTab === 'import' ? 'active' : ''}`}
                     onClick={() => setActiveTab('import')}
                 >
-                    <UploadCloud size={18} />
+                    <UploadCloud size={18} aria-hidden="true" />
                     Importação
                 </button>
             </nav>
@@ -792,13 +820,13 @@ const App = () => {
                 <>
                     {/* Overdue Analysis Header (Only visible when active) */}
                     {showOverdueOnly && (
-                        <div className="card" style={{ marginBottom: '2rem', border: '1px solid hsla(0, 84%, 60%, 0.3)', background: 'linear-gradient(to right, hsla(0, 84%, 60%, 0.05), transparent)' }}>
+                        <div className="card" style={{ marginBottom: '2rem', border: '1px solid var(--color-danger-subtle)', background: 'linear-gradient(to right, var(--color-danger-subtle), transparent)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-                                <div style={{ padding: '0.75rem', background: 'hsla(0, 84%, 60%, 0.2)', borderRadius: '12px', color: '#f87171' }}>
+                                <div style={{ padding: '0.75rem', background: 'var(--color-danger-subtle)', borderRadius: '12px', color: 'var(--color-danger)' }}>
                                     <AlertTriangle size={24} />
                                 </div>
                                 <div>
-                                    <h2 style={{ fontSize: '1.25rem', color: '#f87171', margin: 0 }}>Análise Crítica de Inadimplência</h2>
+                                    <h2 style={{ color: 'var(--color-danger)', margin: 0 }}>Análise Crítica de Inadimplência</h2>
                                     <p style={{ color: 'var(--color-text-muted)', margin: 0, fontSize: '0.875rem' }}>Visão focada apenas em obrigações com data de vencimento anterior a hoje.</p>
                                 </div>
                             </div>
@@ -807,7 +835,7 @@ const App = () => {
                                 <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', background: 'transparent', gap: '1rem' }}>
                                     <div style={{ padding: '1rem', background: 'var(--color-bg-base)', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
                                         <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--color-text-muted)', fontWeight: 600, marginBottom: '0.25rem' }}>Montante em Atraso</div>
-                                        <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#f87171' }}>{formatCurrency(stats.total)}</div>
+                                        <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--color-danger)' }}>{formatCurrency(stats.total)}</div>
                                     </div>
                                     <div style={{ padding: '1rem', background: 'var(--color-bg-base)', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
                                         <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--color-text-muted)', fontWeight: 600, marginBottom: '0.25rem' }}>Volume de Títulos</div>
@@ -820,7 +848,7 @@ const App = () => {
                                     </div>
                                 </div>
                             ) : (
-                                <div style={{ padding: '1rem', background: 'var(--color-bg-base)', borderRadius: '8px', border: '1px solid var(--color-border)', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <div style={{ padding: '1rem', background: 'var(--color-bg-base)', borderRadius: '8px', border: '1px solid var(--color-border)', color: 'var(--color-success)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                     <CheckCircle2 size={18} /> Excelente! Nenhuma fatura em atraso neste período.
                                 </div>
                             )}
@@ -849,7 +877,7 @@ const App = () => {
 
                         <div className="card">
                             <div className="stat-header">
-                                <Users size={18} className="stat-icon" style={{ color: '#8b5cf6' }} />
+                                <Users size={18} className="stat-icon" style={{ color: 'var(--color-info)' }} />
                                 <div className="stat-label">Credores</div>
                             </div>
                             <div className="stat-value">{stats.suppliersCount}</div>
@@ -1065,7 +1093,7 @@ const App = () => {
                 const CARD_CONFIG = [
                     { key: 'CX_BLACK_MAURO',    label: 'Caixa Black (Mauro)',   color: '#f97316' },
                     { key: 'ELO_NANQUIM_MAURO', label: 'Elo Nanquim (Mauro)',   color: '#3b82f6' },
-                    { key: 'CX_BLACK_JR',       label: 'Caixa Black (Jr)',      color: '#8b5cf6' },
+                    { key: 'CX_BLACK_JR',       label: 'Caixa Black (Jr)',      color: '#06b6d4' },
                     { key: 'ELO_NANQUIM_JR',    label: 'Elo Nanquim (Jr)',      color: '#10b981' },
                 ];
 

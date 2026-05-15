@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
-import { 
-    Trash2, 
-    Download, 
-    CheckCircle2, 
-    Circle, 
-    ChevronLeft, 
-    ListChecks, 
-    Wallet, 
+import { formatCurrency } from '../lib/utils';
+import {
+    Trash2,
+    Download,
+    CheckCircle2,
+    Circle,
+    ChevronLeft,
+    ListChecks,
+    Wallet,
     TrendingDown,
-    PlusCircle,
     XCircle,
     FileText
 } from 'lucide-react';
@@ -140,7 +140,7 @@ const PaymentLists = ({ user }) => {
             compress: true
         });
         
-        const fmt = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+        const fmt = (v) => formatCurrency(v);
         const safe = (str) => (str || '').normalize('NFC');
         const dateNow = new Date().toLocaleDateString('pt-BR');
 
@@ -272,7 +272,7 @@ const PaymentLists = ({ user }) => {
                             <div className="stat-label">Total Pendente</div>
                         </div>
                         <div className="stat-value" style={{ color: 'var(--color-danger)' }}>
-                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.pending)}
+                            {formatCurrency(stats.pending)}
                         </div>
                     </div>
 
@@ -285,7 +285,7 @@ const PaymentLists = ({ user }) => {
                             <div className="stat-label">Saldo Após Pagamentos</div>
                         </div>
                         <div className="stat-value" style={{ color: stats.balance >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.balance)}
+                            {formatCurrency(stats.balance)}
                         </div>
                     </div>
                 </div>
@@ -321,7 +321,7 @@ const PaymentLists = ({ user }) => {
                                         {item.descricao} {item.documento && <code style={{ fontSize: '0.7rem', opacity: 0.7 }}>[{item.documento}]</code>}
                                     </td>
                                     <td className="value-cell" style={{ color: item.paid ? 'var(--color-text-muted)' : 'inherit' }}>
-                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.valor)}
+                                        {formatCurrency(item.valor)}
                                     </td>
                                     <td>
                                         <button 
@@ -339,7 +339,7 @@ const PaymentLists = ({ user }) => {
                             <tr style={{ fontWeight: 700 }}>
                                 <td colSpan={4} style={{ textAlign: 'right', padding: '1rem' }}>Total Pago na Lista:</td>
                                 <td className="value-cell" style={{ color: 'var(--color-success)' }}>
-                                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.paid)}
+                                    {formatCurrency(stats.paid)}
                                 </td>
                                 <td></td>
                             </tr>
@@ -402,21 +402,17 @@ const PaymentLists = ({ user }) => {
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.1rem', fontWeight: 700 }}>
                                         <span>Total:</span>
-                                        <span>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(total)}</span>
+                                        <span>{formatCurrency(total)}</span>
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
                                         <span>Itens: {list.items.length}</span>
                                         <span>Progresso: {paidItems}/{list.items.length} pagos</span>
                                     </div>
-                                    <div className="progress-bar-bg" style={{ height: '6px', background: 'var(--color-bg-base)', borderRadius: '3px', marginTop: '0.5rem', overflow: 'hidden' }}>
-                                        <div 
-                                            className="progress-bar-fill" 
-                                            style={{ 
-                                                height: '100%', 
-                                                width: `${(paidItems / list.items.length) * 100}%`,
-                                                background: 'var(--color-success)',
-                                                borderRadius: '3px',
-                                                transition: 'width 0.3s ease'
+                                    <div className="progress-bar-bg" style={{ marginTop: '0.5rem' }}>
+                                        <div
+                                            className="progress-bar-fill"
+                                            style={{
+                                                width: `${list.items.length > 0 ? (paidItems / list.items.length) * 100 : 0}%`
                                             }}
                                         />
                                     </div>

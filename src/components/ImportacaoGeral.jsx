@@ -97,7 +97,16 @@ const ImportacaoGeral = ({ dbDataCount, onImportSuccess }) => {
                 return;
             }
 
-            if (window.confirm(`Detectados ${newRecords.length} registros válidos em "${fileName}".\n\nATENÇÃO: Deseja apagar o banco atual e importar estes novos dados?`)) {
+            // Verifica quantos registros existem antes de apagar (transparência)
+            const { count: existingCount } = await supabase
+                .from('payments')
+                .select('*', { count: 'exact', head: true });
+
+            const msg = `Detectados ${newRecords.length} registros válidos em "${fileName}".\n\n` +
+                `ATENÇÃO: Esta ação vai APAGAR ${existingCount ?? '?'} registros existentes ` +
+                `no banco e substituí-los pelos novos.\n\nDeseja continuar?`;
+
+            if (window.confirm(msg)) {
                 setIsReseting(true);
                 const { error: delError } = await supabase.from('payments').delete().not('id', 'is', null);
                 if (delError) throw delError;
@@ -150,7 +159,7 @@ const ImportacaoGeral = ({ dbDataCount, onImportSuccess }) => {
             };
             reader.readAsArrayBuffer(file);
         } else {
-            alert('Formato de arquivo não suportatedo. Use .csv, .xlsx ou .xls');
+            alert('Formato de arquivo não suportado. Use .csv, .xlsx ou .xls');
         }
     };
 
@@ -176,6 +185,7 @@ const ImportacaoGeral = ({ dbDataCount, onImportSuccess }) => {
                     onChange={handleFileImport}
                     style={{ display: 'none' }}
                     disabled={isReseting}
+                    aria-label="Selecionar planilha CSV ou Excel para importação geral"
                 />
                 <label htmlFor="universal-upload" style={{ cursor: isReseting ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.25rem' }}>
                     <div style={{ width: '64px', height: '64px', borderRadius: '20px', background: 'var(--color-surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
